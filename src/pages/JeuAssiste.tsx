@@ -435,12 +435,6 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
         </Alerte>
       ) : null}
 
-      {etatMoteur.etat === 'telechargement' ? (
-        <Alerte titre="Téléchargement du moteur" ton="info">
-          Environ 7 Mo, une seule fois.
-        </Alerte>
-      ) : null}
-
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div ref={zoneEchiquier}>
           <div className="mx-auto flex w-full max-w-[min(88vw,62vh,34rem)] gap-2">
@@ -497,6 +491,16 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
         </div>
 
         <div className="space-y-4">
+          {/* Le bandeau de téléchargement vit SOUS l'échiquier, jamais
+              au-dessus : il disparaît au bout de quelques secondes, et le
+              placer plus haut faisait remonter l'échiquier d'un coup — de
+              quoi faire tomber à côté un appui déjà engagé. */}
+          {etatMoteur.etat === 'telechargement' ? (
+            <Alerte titre="Téléchargement du moteur" ton="info">
+              Environ 7 Mo, une seule fois. Il restera ensuite disponible hors ligne.
+            </Alerte>
+          ) : null}
+
           {verdictEnCours ? (
             <Carte titre="Votre coup">
               <p className="text-sm text-[var(--color-texte-doux)]">Évaluation en cours…</p>

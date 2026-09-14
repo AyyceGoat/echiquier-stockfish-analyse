@@ -160,9 +160,24 @@ Netlify, configuration dans `netlify.toml` :
   manifeste en `must-revalidate`.
 - Redirection SPA en dernier, après les fonctions.
 
-Pour activer la reconnaissance par modèle sans que l'utilisateur ait à saisir
-une clé : définir `ANTHROPIC_API_KEY` dans les variables d'environnement du
-site Netlify.
+Site en production : **https://echiquier-stockfish-analyse.netlify.app**
+
+La reconnaissance par modèle fonctionne sans configuration : Netlify injecte
+`ANTHROPIC_API_KEY` et `ANTHROPIC_BASE_URL` pointant vers sa passerelle IA, et
+le SDK Anthropic les reprend tels quels. La consommation est donc décomptée du
+compte Netlify. Pour utiliser sa propre clé à la place, il suffit de la saisir
+dans **Réglages → Reconnaissance par image**.
+
+Deux pièges rencontrés en production, corrigés et documentés ici :
+
+- Netlify sert `.webmanifest` en `application/octet-stream`, ce qui rend
+  l'application non installable ; le type est déclaré explicitement.
+- Netlify injecte un HUD (`built_with_badge_enabled`) dont l'iframe fixe,
+  en z-index maximal, recouvrait deux onglets de la barre de navigation sur
+  un écran de 390 px. Désactivé sur le site.
+
+Le schéma de sortie structurée n'accepte pas `minItems`/`maxItems` au-delà de
+1 : la forme 8×8 est imposée par la consigne et vérifiée deux fois côté code.
 
 ## Tests
 

@@ -23,19 +23,20 @@ const MODELE = 'claude-opus-5';
 // de temps d'exécution des fonctions Netlify.
 const EFFORT = 'low';
 
+// Schéma volontairement minimal : l'API de sortie structurée n'accepte pas
+// de `minItems`/`maxItems` au-delà de 1, ni de bornes numériques. La forme
+// 8x8 est donc imposée par la consigne, puis VÉRIFIÉE deux fois — ici par
+// `normaliserPlateau` côté client, et par la validation de FEN avant tout
+// affichage. Une contrainte de schéma en plus n'aurait rien garanti de mieux.
 const SCHEMA = {
   type: 'object',
   properties: {
     plateau: {
       type: 'array',
-      minItems: 8,
-      maxItems: 8,
       description:
-        'Les 8 rangées, de la 8e (haut de l’image) à la 1re (bas de l’image), chacune de 8 cases de la colonne a à la colonne h.',
+        'Les 8 rangées, de celle du HAUT de l’image à celle du BAS, chacune de 8 cases, de gauche à droite.',
       items: {
         type: 'array',
-        minItems: 8,
-        maxItems: 8,
         items: {
           type: 'string',
           description:
@@ -45,14 +46,8 @@ const SCHEMA = {
     },
     confiances: {
       type: 'array',
-      minItems: 8,
-      maxItems: 8,
-      items: {
-        type: 'array',
-        minItems: 8,
-        maxItems: 8,
-        items: { type: 'number', minimum: 0, maximum: 1 },
-      },
+      description: 'Confiance entre 0 et 1 pour chaque case, même disposition que « plateau ».',
+      items: { type: 'array', items: { type: 'number' } },
     },
     orientation: {
       type: 'string',
@@ -76,7 +71,7 @@ MÉTHODE, à suivre dans l'ordre :
 6. Si tu distingues à qui est le trait (pendule, surbrillance du dernier coup), indique-le ; sinon « inconnu ».
 
 RÈGLES STRICTES :
-- Exactement 8 rangées de 8 cases.
+- « plateau » contient EXACTEMENT 8 rangées, chacune de EXACTEMENT 8 cases. « confiances » a exactement la même forme. Une réponse qui ne respecte pas ces tailles est inutilisable.
 - Case vide = chaîne vide, jamais un point ni un espace.
 - Pièce blanche en MAJUSCULE, pièce noire en minuscule, selon la couleur réelle des pièces et non leur position sur l'image.
 - Un échiquier a au plus un roi de chaque couleur. Si tu hésites entre un roi et une dame, choisis et baisse la confiance.
@@ -99,7 +94,18 @@ function erreur(message, conseil, statut = 400) {
 
 export default async function handler(req) {
   if (req.method === 'GET') {
-    return reponseJson({ cleServeur: Boolean(process.env.ANTHROPIC_API_KEY), modele: MODELE });
+    const url = new URL(req.url);
+    const reponse = {
+      cleServeur: Boolean(process.env.ANTHROPIC_API_KEY),
+      modele: MODELE,
+    };
+    // Diagnostic volontairement pauvre : de quoi savoir si la reconnaissance
+    // par modèle est utilisable et par quel chemin, sans publier de noms de
+    // variables ni de fragment de clé sur un point d'entrée ouvert.
+    if (url.searchParams.get('diagnostic') === '1') {
+      reponse.passerelle = Boolean(process.env.ANTHROPIC_BASE_URL);
+    }
+    return reponseJson(reponse);
   }
 
   if (req.method !== 'POST') {
@@ -213,10 +219,16 @@ export default async function handler(req) {
         429,
       );
     }
-    console.error('Échec de la reconnaissance :', e?.message ?? e);
-    return erreur(
-      "La reconnaissance a échoué.",
-      "Réessayez, ou basculez sur la reconnaissance locale dans les réglages.",
+    // Le message brut peut contenir des fragments de requête : on n'en
+    // conserve que le type et le statut, suffisants pour diagnostiquer.
+    const cause = `${e?.name ?? 'Error'}${statut ? ` ${statut}` : ''}: ${String(e?.message ?? e).slice(0, 200)}`;
+    console.error('Échec de la reconnaissance :', cause);
+    return reponseJson(
+      {
+        erreur: 'La reconnaissance a échoué.',
+        conseil: 'Réessayez, ou basculez sur la reconnaissance locale dans les réglages.',
+        cause,
+      },
       502,
     );
   }

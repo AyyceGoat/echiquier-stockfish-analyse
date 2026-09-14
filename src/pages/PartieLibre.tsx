@@ -257,12 +257,6 @@ export function PartieLibre({ naviguer }: { naviguer: (v: string) => void }) {
         </Alerte>
       ) : null}
 
-      {etatMoteur.etat === 'telechargement' && adversaire === 'moteur' ? (
-        <Alerte titre="Téléchargement du moteur" ton="info">
-          Environ 7 Mo, une seule fois. La partie commencera dès qu’il sera prêt.
-        </Alerte>
-      ) : null}
-
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div ref={zoneEchiquier}>
           <Echiquier
@@ -304,6 +298,15 @@ export function PartieLibre({ naviguer }: { naviguer: (v: string) => void }) {
         </div>
 
         <div className="space-y-4">
+          {/* Sous l'échiquier, pas au-dessus : ce bandeau disparaît au bout
+              de quelques secondes et ferait remonter le plateau en pleine
+              partie s'il occupait le haut de la page. */}
+          {etatMoteur.etat === 'telechargement' && adversaire === 'moteur' ? (
+            <Alerte titre="Téléchargement du moteur" ton="info">
+              Environ 7 Mo, une seule fois. La partie commencera dès qu’il sera prêt.
+            </Alerte>
+          ) : null}
+
           {fin ? (
             <Carte titre="Partie terminée">
               <p className="text-lg font-semibold">

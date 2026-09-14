@@ -35,9 +35,14 @@
   [headers.values]
     Cache-Control = "public, max-age=0, must-revalidate"
 
+# Netlify ne connaît pas l'extension .webmanifest et la sert en
+# application/octet-stream : les navigateurs refusent alors de lire le
+# manifeste, et l'application n'est plus installable. Le type est donc
+# déclaré explicitement.
 [[headers]]
   for = "/manifest.webmanifest"
   [headers.values]
+    Content-Type = "application/manifest+json; charset=utf-8"
     Cache-Control = "public, max-age=0, must-revalidate"
 
 # Les noms de fichiers produits par Vite contiennent un hachage de contenu.

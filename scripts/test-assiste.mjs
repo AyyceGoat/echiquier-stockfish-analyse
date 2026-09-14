@@ -78,22 +78,45 @@ async function jouer(depuis, vers) {
     return { x: boite.x + (cx + 0.5) * boite.c, y: boite.y + (cy + 0.5) * boite.c };
   };
   const a = centre(depuis);
-  const b = centre(vers);
   const vp = page.viewport();
-  for (const [nom, pt] of [['départ', a], ['arrivée', b]]) {
+  const verifierDansLEcran = (nom, pt) => {
     if (pt.y < 0 || pt.y > vp.height || pt.x < 0 || pt.x > vp.width) {
       throw new Error(`La case ${nom} est hors de l'écran : ${JSON.stringify(pt)}`);
     }
-  }
+  };
+  verifierDansLEcran('départ', a);
   await page.mouse.click(a.x, a.y);
   await new Promise((r) => setTimeout(r, 250));
+
+  // L'échiquier est remesuré entre les deux appuis : une bannière qui
+  // disparaît au-dessus de lui le déplacerait, et le second appui tomberait
+  // sur une autre case.
+  const boite2 = await page.$eval('cg-board', (el) => {
+    const r = el.getBoundingClientRect();
+    return { x: r.left, y: r.top, c: r.width / 8 };
+  });
+  const col = vers.charCodeAt(0) - 97;
+  const rang = Number(vers[1]) - 1;
+  const b = {
+    x: boite2.x + ((noires ? 7 - col : col) + 0.5) * boite2.c,
+    y: boite2.y + ((noires ? rang : 7 - rang) + 0.5) * boite2.c,
+  };
+  verifierDansLEcran('arrivée', b);
   await page.mouse.click(b.x, b.y);
   await new Promise((r) => setTimeout(r, 400));
 }
 
-await jouer('a2', 'a4');
-
-const coupJoue = await page.evaluate(() => document.body.innerText.includes('a4'));
+/**
+ * Joue le coup, avec une seconde tentative.
+ * Sur un site distant, l'échiquier peut être visible avant que Chessground
+ * ait reçu ses coups jouables : le premier appui ne sélectionne alors rien.
+ */
+let coupJoue = false;
+for (let essai = 1; essai <= 2 && !coupJoue; essai++) {
+  await jouer('a2', 'a4');
+  coupJoue = await page.evaluate(() => document.body.innerText.includes('a4'));
+  if (!coupJoue) await new Promise((r) => setTimeout(r, 1500));
+}
 verifier(coupJoue, 'Le coup a été enregistré sur l’échiquier');
 await page.waitForFunction(() => document.body.innerText.includes('Votre coup'), {
   timeout: 30000,
