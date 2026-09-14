@@ -146,3 +146,30 @@ input[type='number'] {
   background-repeat: no-repeat;
   transform: none;
 }
+
+/* Coordonnées de l'échiquier.
+   Les valeurs livrées par Chessground (`coords.files { left: 24px }`,
+   `coords.ranks { top: -20px }`) supposent une mise en page qui n'est pas la
+   nôtre : elles décalent les lettres d'une colonne et font dépasser
+   l'échiquier de 24 px sur la droite, ce qui provoquait un débordement
+   horizontal en 360 px. On replace les repères à l'intérieur du plateau. */
+.cg-wrap coords.files {
+  left: 0;
+  bottom: 1px;
+  width: 100%;
+  height: 12px;
+  align-items: flex-end;
+}
+
+.cg-wrap coords.ranks {
+  top: 0;
+  left: 2px;
+  height: 100%;
+  width: 12px;
+}
+
+.cg-wrap coords coord {
+  font-size: clamp(7px, 1.6vmin, 11px);
+  font-weight: 600;
+  line-height: 1;
+}

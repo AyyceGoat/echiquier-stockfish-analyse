@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -b --noEmit"
+    "typecheck": "tsc -b --noEmit",
+    "icones": "node scripts/generer-icones.mjs",
+    "test:navigateur": "node scripts/test-navigateur.mjs",
+    "preview:sans-isolation": "node scripts/serveur-sans-isolation.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",
@@ -25,6 +28,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^5.1.0",
     "jsdom": "^28.0.0",
+    "puppeteer-core": "^25.11.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.0",
     "vite": "^8.3.0",

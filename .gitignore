@@ -8,3 +8,4 @@ dist-ssr
 .DS_Store
 .vite
 coverage
+captures
