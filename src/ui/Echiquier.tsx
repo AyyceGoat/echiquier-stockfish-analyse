@@ -53,6 +53,15 @@ export interface ProprietesEchiquier {
   onClicCase?: (caseCliquee: string) => void;
   /** Taille maximale de l'échiquier, en unités CSS. */
   tailleMax?: string;
+  /**
+   * Force la réapplication de la position, même si le FEN n'a pas changé.
+   *
+   * Chessground déplace la pièce dès que l'utilisateur la lâche, sans
+   * attendre notre accord. Quand on refuse ce coup et qu'on revient au MÊME
+   * FEN, React ne voit aucun changement et l'échiquier reste dans l'état
+   * refusé. Incrémenter ce compteur le remet en place.
+   */
+  revision?: number;
 }
 
 export function Echiquier({
@@ -70,6 +79,7 @@ export function Echiquier({
   onCoup,
   onClicCase,
   tailleMax = 'min(88vw, 62vh, 34rem)',
+  revision = 0,
 }: ProprietesEchiquier) {
   const conteneur = useRef<HTMLDivElement>(null);
   const api = useRef<Api | null>(null);
@@ -185,6 +195,7 @@ export function Echiquier({
     dests,
     formes,
     custom,
+    revision,
   ]);
 
   return (

@@ -5,7 +5,8 @@
 
 import { useEffect, useState } from 'react';
 import { listerParties, type PartieEnregistree } from '../db/parties.ts';
-import { useEtatMoteur } from '../hooks/useMoteur.ts';
+import { useEtatMoteur, useMoteur } from '../hooks/useMoteur.ts';
+import { nomVariante } from '../engine/capacites.ts';
 import { Bouton, Carte, Etiquette } from '../ui/composants.tsx';
 
 const MODES = [
@@ -35,8 +36,18 @@ const MODES = [
   },
 ];
 
+const APPRENDRE = {
+  chemin: '/apprendre',
+  titre: 'Apprendre',
+  accroche: 'Les règles et la tactique, en exercices.',
+  detail:
+    'Le déplacement de chaque pièce, le roque, la prise en passant, puis les motifs tactiques — et les exercices qui correspondent aux erreurs de vos parties.',
+  icone: '♛',
+};
+
 export function Accueil({ naviguer }: { naviguer: (v: string) => void }) {
   const etatMoteur = useEtatMoteur();
+  const moteur = useMoteur();
   const [recentes, setRecentes] = useState<PartieEnregistree[]>([]);
 
   useEffect(() => {
@@ -54,7 +65,7 @@ export function Accueil({ naviguer }: { naviguer: (v: string) => void }) {
       <div className="pt-2">
         <h1 className="text-2xl font-semibold">Que voulez-vous faire ?</h1>
         <p className="mt-1 text-sm text-[var(--color-texte-doux)]">
-          Les trois modes se distinguent par le moment où le moteur intervient.
+          Les trois modes de jeu se distinguent par le moment où le moteur intervient.
         </p>
       </div>
 
@@ -77,6 +88,21 @@ export function Accueil({ naviguer }: { naviguer: (v: string) => void }) {
           </button>
         ))}
       </div>
+
+      <button
+        type="button"
+        onClick={() => naviguer(APPRENDRE.chemin)}
+        className="w-full rounded-2xl border border-[var(--color-bordure)] bg-[var(--color-fond-2)] p-4 text-left transition-colors hover:border-[var(--color-accent)]"
+      >
+        <div className="mb-2 flex items-center gap-2">
+          <span aria-hidden className="text-xl">
+            {APPRENDRE.icone}
+          </span>
+          <h2 className="text-base font-semibold">{APPRENDRE.titre}</h2>
+        </div>
+        <p className="text-sm font-medium text-[var(--color-accent)]">{APPRENDRE.accroche}</p>
+        <p className="mt-1.5 text-sm text-[var(--color-texte-doux)]">{APPRENDRE.detail}</p>
+      </button>
 
       {recentes.length > 0 ? (
         <Carte
@@ -121,7 +147,9 @@ export function Accueil({ naviguer }: { naviguer: (v: string) => void }) {
       <Carte titre="Moteur">
         <div className="flex flex-wrap items-center gap-2 text-sm">
           {etatMoteur.etat === 'pret' || etatMoteur.etat === 'recherche' ? (
-            <Etiquette ton="succes">Stockfish 18 prêt</Etiquette>
+            <Etiquette ton="succes">
+              {moteur.varianteChargee ? nomVariante(moteur.varianteChargee) : 'Moteur'} prêt
+            </Etiquette>
           ) : etatMoteur.etat === 'echec' ? (
             <Etiquette ton="danger">Moteur indisponible</Etiquette>
           ) : etatMoteur.etat === 'arrete' ? (

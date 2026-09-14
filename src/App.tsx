@@ -21,16 +21,27 @@ const AnalysePosition = lazy(() =>
 const Historique = lazy(() =>
   import('./pages/Historique.tsx').then((m) => ({ default: m.Historique })),
 );
+const Apprendre = lazy(() =>
+  import('./pages/Apprendre.tsx').then((m) => ({ default: m.Apprendre })),
+);
 const Reglages = lazy(() => import('./pages/Reglages.tsx').then((m) => ({ default: m.Reglages })));
 const Diagnostic = lazy(() =>
   import('./pages/Diagnostic.tsx').then((m) => ({ default: m.Diagnostic })),
 );
 const Rapport = lazy(() => import('./pages/Rapport.tsx').then((m) => ({ default: m.Rapport })));
 
+/**
+ * Cinq entrées, pas six.
+ *
+ * L'accueil a quitté la barre : le titre en haut y ramène, et six libellés
+ * ne tiennent pas lisiblement sur un écran de 360 px — ils passaient à deux
+ * lignes ou se tronquaient. Cinq laissent 72 px par onglet, au-dessus de la
+ * cible tactile recommandée.
+ */
 const ONGLETS = [
-  { chemin: '/', libelle: 'Accueil', icone: '♟' },
-  { chemin: '/libre', libelle: 'Partie libre', icone: '♙' },
-  { chemin: '/assiste', libelle: 'Jeu assisté', icone: '★' },
+  { chemin: '/libre', libelle: 'Jouer', icone: '♙' },
+  { chemin: '/assiste', libelle: 'Assisté', icone: '★' },
+  { chemin: '/apprendre', libelle: 'Apprendre', icone: '♛' },
   { chemin: '/analyse', libelle: 'Analyse', icone: '▦' },
   { chemin: '/historique', libelle: 'Historique', icone: '☰' },
 ];
@@ -85,6 +96,8 @@ function Coque() {
         return <AnalysePosition naviguer={naviguer} />;
       case 'historique':
         return <Historique naviguer={naviguer} />;
+      case 'apprendre':
+        return <Apprendre naviguer={naviguer} />;
       case 'reglages':
         return <Reglages naviguer={naviguer} />;
       case 'diagnostic':
@@ -124,7 +137,7 @@ function Coque() {
           </button>
 
           <nav className="hidden items-center gap-1 md:flex">
-            {ONGLETS.slice(1).map((o) => (
+            {ONGLETS.map((o) => (
               <button
                 key={o.chemin}
                 type="button"
@@ -165,12 +178,22 @@ function Coque() {
               <button
                 type="button"
                 onClick={() => naviguer(o.chemin)}
-                className={`cible-tactile flex w-full flex-col items-center gap-0.5 py-2 text-[0.68rem] ${
+                aria-current={ongletActif(o.chemin) ? 'page' : undefined}
+                className={`cible-tactile relative flex w-full flex-col items-center gap-0.5 py-2 text-[0.7rem] ${
                   ongletActif(o.chemin)
-                    ? 'text-[var(--color-accent)]'
+                    ? 'font-semibold text-[var(--color-accent)]'
                     : 'text-[var(--color-texte-doux)]'
                 }`}
               >
+                {/* Trait sous l'onglet actif : la couleur seule ne suffit pas
+                    à le repérer d'un coup d'œil, ni pour qui distingue mal
+                    les couleurs. */}
+                {ongletActif(o.chemin) ? (
+                  <span
+                    aria-hidden
+                    className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--color-accent)]"
+                  />
+                ) : null}
                 <span aria-hidden className="text-base leading-none">
                   {o.icone}
                 </span>

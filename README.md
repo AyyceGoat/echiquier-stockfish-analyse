@@ -4,16 +4,55 @@ Application web d'échecs personnelle : jouer contre Stockfish, s'entraîner ave
 une assistance en temps réel, et analyser ses parties coup par coup. Interface
 entièrement en français, 100 % client, installable comme application mobile.
 
-## Les trois modes
+## Les trois modes de jeu
 
-La différence entre les trois sections porte sur **le moment où le moteur
-intervient**.
+La différence porte sur **le moment où le moteur intervient**.
 
 | Mode | Pendant la partie | À la fin |
 |---|---|---|
 | **Partie libre** | Rien. Aucune évaluation, aucune flèche, aucun indice. | Analyse complète proposée. |
 | **Jeu assisté** | Verdict après chaque coup, meilleur coup affiché en cas d'erreur, reprise possible. | Analyse complète proposée. |
-| **Analyse de position** | Analyse continue, 3 meilleures lignes, exploration libre des variantes. | — |
+| **Analyse de position** | Analyse continue, exploration libre des variantes. | — |
+
+S'y ajoute **Apprendre** : les règles en exercices jouables, la tactique par
+motif, et les exercices correspondant aux erreurs relevées dans vos parties.
+
+## Une seule flèche
+
+L'échiquier n'affiche **jamais plus d'une flèche**. La règle tient par
+construction : le composant `Echiquier` expose une propriété `fleche` au
+singulier, pas un tableau. Les lignes MultiPV restent du texte, repliées
+derrière « Voir les alternatives » ; en choisir une remplace la flèche
+principale au lieu de s'y ajouter.
+
+## Explications sans chiffre
+
+`src/lib/explications.ts` produit une phrase concrète à partir de la seule
+géométrie de la position et de ce que Stockfish fournit déjà — aucun appel
+réseau, aucun modèle de langage, donc utilisable hors ligne et sans clé.
+
+> Ce coup laisse votre cavalier en e4 en prise.
+> Il y avait un mat en 3 coups avec Ta8.
+> Votre dame reste menacée par le fou en b4.
+
+La phrase principale ne contient jamais d'évaluation chiffrée : « ce coup
+vous coûte 0,77 » n'apprend rien. Le nombre reste affiché à côté, plus petit.
+
+## Niveaux du moteur
+
+Six paliers nommés, avec leur ordre de grandeur Elo. `Skill Level` seul ne
+descend pas assez bas — à 0, Stockfish joue encore vers 1350 Elo — et le
+plancher d'`UCI_Elo` est 1320. Les paliers bas brident donc aussi la
+**profondeur**, seul levier qui descende plus bas.
+
+`npm run test:niveaux` le vérifie en faisant jouer le moteur contre lui-même :
+
+| Palier | Perte moyenne | Bourdes (≥ 200 cp) |
+|---|---|---|
+| Débutant (~800) | 150 cp | 8 |
+| Amateur (~1200) | 91 cp | 5 |
+| Club (~1600) | 40 cp | 2 |
+| Maximum | 2 cp | 0 |
 
 ## Démarrage
 
