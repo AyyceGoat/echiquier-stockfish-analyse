@@ -13,7 +13,9 @@
     "icones": "node scripts/generer-icones.mjs",
     "test:navigateur": "node scripts/test-navigateur.mjs",
     "preview:sans-isolation": "node scripts/serveur-sans-isolation.mjs",
-    "gabarits": "node scripts/extraire-gabarits.mjs"
+    "gabarits": "node scripts/extraire-gabarits.mjs",
+    "test:hors-ligne": "node scripts/test-hors-ligne.mjs",
+    "test:tout": "vitest run && node scripts/test-navigateur.mjs && node scripts/test-assiste.mjs && node scripts/test-rapport.mjs && node scripts/test-hors-ligne.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",

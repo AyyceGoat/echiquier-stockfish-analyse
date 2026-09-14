@@ -95,7 +95,13 @@ try {
     page.on('console', (m) => {
       if (m.type() === 'error') erreurs.push(m.text());
     });
-    page.on('pageerror', (e) => erreurs.push(`pageerror: ${e.message}`));
+    page.on('pageerror', (e) => erreurs.push('pageerror: ' + String(e?.message ?? e)));
+    page.on('console', (m) => {
+      if (m.type() === 'error') console.log('       [console]', m.text().slice(0, 200));
+    });
+    page.on('requestfailed', (r) =>
+      console.log('       [requête échouée]', r.url().replace(BASE, ''), r.failure()?.errorText),
+    );
 
     // --- Accueil ---
     await page.goto(`${BASE}/#/`, { waitUntil: 'networkidle2', timeout: 60000 });

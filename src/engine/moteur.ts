@@ -94,6 +94,13 @@ export class Moteur {
 
   private resolveurUciok: (() => void) | null = null;
   private resolveurReadyok: (() => void) | null = null;
+  /**
+   * Fait échouer l'attente de démarrage en cours.
+   * Sans cela, une panne du worker pendant l'initialisation laissait la
+   * promesse pendante jusqu'au délai de garde — soixante secondes avant
+   * que le repli mono-thread ne soit seulement tenté.
+   */
+  private rejeterDemarrage: ((e: Error) => void) | null = null;
 
   private abonnes = new Set<(e: EvenementMoteur) => void>();
 
@@ -103,6 +110,8 @@ export class Moteur {
   nomMoteur = `Stockfish ${VERSION_MOTEUR}`;
 
   private promesseDemarrage: Promise<void> | null = null;
+  /** Le repli mono-thread n'est tenté qu'une fois, pour ne pas boucler. */
+  private replinTente = false;
 
   constructor(capacites: Capacites = detecterCapacites()) {
     this.capacites = capacites;
@@ -172,6 +181,7 @@ export class Moteur {
           };
         }
         this.emettre({ etat: 'pret' });
+        void this.preparerReplinHorsLigne();
         return;
       } catch (e) {
         derniereErreur = e instanceof Error ? e : new Error(String(e));
@@ -193,7 +203,11 @@ export class Moteur {
 
     this.emettre({ etat: 'demarrage', message: 'Initialisation du moteur…' });
 
-    const worker = new Worker(`${js}#${encodeURIComponent(wasm)}`);
+    // Aucun fragment dans l'URL du worker : le chargeur Stockfish déduit
+    // seul le chemin du .wasm depuis celui du .js, et un fragment rendrait
+    // l'URL incachable par le service worker (l'API Cache indexe fragment
+    // compris, or emscripten en ajoute un différent par thread).
+    const worker = new Worker(js);
     this.worker = worker;
 
     worker.onmessage = (ev: MessageEvent) => this.surMessage(ev);
@@ -215,6 +229,36 @@ export class Moteur {
     worker.postMessage('ucinewgame');
 
     await this.attendre('readyok', () => worker.postMessage('isready'), DELAI_DEMARRAGE_MS);
+  }
+
+  /**
+   * Met le build mono-thread en cache, pour que le moteur reste utilisable
+   * hors ligne.
+   *
+   * Le build multi-thread démarre des threads secondaires dont l'URL porte
+   * un fragment propre à chaque thread ; le service worker ne peut pas les
+   * servir depuis son cache. Hors ligne, ces threads échouent et le moteur
+   * bascule sur le mono-thread — encore faut-il que celui-ci ait été
+   * téléchargé. On s'en charge en arrière-plan, une fois le moteur déjà
+   * prêt, et seulement si la connexion ne s'y oppose pas : sur un forfait
+   * limité ou en 3G, on renonce plutôt que d'imposer 7 Mo silencieux.
+   */
+  private async preparerReplinHorsLigne(): Promise<void> {
+    if (this.varianteChargee !== 'multithread') return;
+    if (this.capacites.reseauLent) return;
+    if (typeof caches === 'undefined') return;
+
+    const { js, wasm } = urlsMoteur('monothread');
+    try {
+      const deja = await caches.match(wasm);
+      if (deja) return;
+      // `low` évite de concurrencer une analyse en cours.
+      await fetch(js, { priority: 'low' } as RequestInit);
+      await fetch(wasm, { priority: 'low' } as RequestInit);
+    } catch {
+      // Sans réseau ou sans cache, le repli restera indisponible hors ligne :
+      // ce n'est qu'un confort, jamais une condition de fonctionnement.
+    }
   }
 
   /** Télécharge le WASM en signalant la progression, sans conserver les octets. */
@@ -267,22 +311,73 @@ export class Moteur {
 
       const fin = () => {
         clearTimeout(minuteur);
+        this.rejeterDemarrage = null;
         resoudre();
       };
       if (jeton === 'uciok') this.resolveurUciok = fin;
       else this.resolveurReadyok = fin;
 
+      this.rejeterDemarrage = (e: Error) => {
+        clearTimeout(minuteur);
+        this.resolveurUciok = null;
+        this.resolveurReadyok = null;
+        this.rejeterDemarrage = null;
+        rejeter(e);
+      };
+
       declencher();
     });
   }
 
+  /**
+   * Panne du worker, à n'importe quel moment.
+   *
+   * Le build multi-thread ne révèle pas tous ses problèmes au démarrage : il
+   * crée ses threads secondaires plus tard, et leurs URL portent un fragment
+   * qui les rend inaccessibles depuis le cache du service worker. Hors ligne,
+   * la panne survient donc APRÈS un démarrage réussi. Plutôt que de la
+   * remonter à l'appelant, on rebascule sur le mono-thread et on rejoue les
+   * recherches en attente : l'utilisateur ne voit qu'un court délai.
+   */
   private surEchecWorker(message: string): void {
-    const erreur = new Error(message);
+    // Panne pendant l'initialisation : on laisse `demarrerInterne` enchaîner
+    // sur la variante suivante. Les recherches en attente restent en file et
+    // seront servies dès que le moteur de repli sera prêt.
+    const rejeter = this.rejeterDemarrage;
+    if (rejeter) {
+      this.rejeterDemarrage = null;
+      rejeter(new Error(message));
+      return;
+    }
+
+    const enCours = this.tacheCourante;
+    const enFile = this.file.splice(0);
+    this.tacheCourante = null;
+    if (this.garde) {
+      clearTimeout(this.garde);
+      this.garde = null;
+    }
     this.detruireWorker();
     this.promesseDemarrage = null;
-    const enCours = this.tacheCourante;
-    this.tacheCourante = null;
-    const enFile = this.file.splice(0);
+
+    if (this.varianteChargee === 'multithread' && !this.replinTente) {
+      this.replinTente = true;
+      this.varianteChargee = null;
+      this.profil = {
+        ...this.profil,
+        variante: 'monothread',
+        threads: 1,
+        raisonModeReduit:
+          'Le moteur multi-thread a cessé de répondre : repli automatique sur le mono-thread.',
+      };
+      if (enCours && !enCours.annulee) this.file.push(enCours);
+      this.file.push(...enFile);
+      this.emettre({ etat: 'demarrage', message: 'Repli sur le moteur mono-thread…' });
+      void this.avancerFile();
+      return;
+    }
+
+    const erreur = new Error(message);
     this.emettre({ etat: 'echec', erreur: message });
     enCours?.rejeter(erreur);
     for (const t of enFile) t.rejeter(erreur);
@@ -535,6 +630,7 @@ export class Moteur {
     this.niveauActuel = null;
     this.resolveurUciok = null;
     this.resolveurReadyok = null;
+    this.rejeterDemarrage = null;
   }
 
   /** Arrête tout et libère le worker. */

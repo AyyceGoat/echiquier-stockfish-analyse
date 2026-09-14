@@ -29,7 +29,7 @@ await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true
 
 const erreurs = [];
 page.on('console', (m) => { if (m.type() === 'error') erreurs.push(m.text()); });
-page.on('pageerror', (e) => erreurs.push(`pageerror: ${e.message}`));
+page.on('pageerror', (e) => erreurs.push('pageerror: ' + String(e?.message ?? e)));
 
 await page.goto(`${BASE}/#/`, { waitUntil: 'networkidle2' });
 await page.waitForSelector('h1');

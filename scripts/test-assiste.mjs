@@ -30,7 +30,7 @@ const erreurs = [];
 page.on('console', (m) => {
   if (m.type() === 'error') erreurs.push(m.text());
 });
-page.on('pageerror', (e) => erreurs.push(`pageerror: ${e.message}`));
+page.on('pageerror', (e) => erreurs.push('pageerror: ' + String(e?.message ?? e)));
 
 const cliquer = (p) =>
   page.evaluate((src) => {
