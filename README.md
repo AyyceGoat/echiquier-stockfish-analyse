@@ -108,6 +108,31 @@ La clé n'est jamais incluse dans le bundle client.
 - Table de hachage réglée dynamiquement : 16 Mo sur iOS (au-delà, Safari fait
   recharger l'onglet), 32 Mo sur les autres mobiles, 128 Mo sur ordinateur.
 
+### Hors ligne et multi-thread : pourquoi un repli
+
+Le build multi-thread démarre ses threads secondaires avec une URL de script
+suffixée d'un fragment propre à chaque thread (`...js#<wasm>,worker`), ajouté
+par emscripten. L'API Cache indexant **fragment compris**, ces requêtes ne
+correspondent à aucune entrée du cache.
+
+Les faire correspondre n'est pas la solution : intercepter les requêtes des
+threads secondaires depuis le service worker les empêche de démarrer, y
+compris en ligne. C'est mesuré, pas supposé — la règle de cache reste donc
+une expression régulière qui les ignore délibérément.
+
+L'application procède autrement :
+
+1. en ligne, le multi-thread est utilisé quand le contexte est isolé ;
+2. une fois le moteur prêt, le build **mono-thread** est téléchargé en
+   arrière-plan, sauf connexion économe ou `saveData` ;
+3. hors ligne, les threads secondaires échouent, le moteur bascule
+   automatiquement sur le mono-thread déjà en cache et rejoue les recherches
+   en attente.
+
+Résultat mesuré : hors ligne, le moteur répond en environ 400 ms. Le coût est
+un téléchargement d'arrière-plan de 7 Mo, une seule fois, et jamais sur une
+connexion signalée comme limitée.
+
 ## Compatibilité
 
 Cible de build **ES2020**, `browserslist` configuré pour iOS 15+, Safari 15+,
@@ -146,7 +171,23 @@ site Netlify.
 - validation de FEN (syntaxe et légalité, normalisation des roques) ;
 - parseur UCI (scores, bornes, MultiPV, `bestmove (none)`, variantes) ;
 - classification des coups et calcul de précision ;
-- moments charnières.
+- moments charnières ;
+- répertoire d'ouvertures et détection des coups de théorie ;
+- export PGN annoté, relu par `chess.js` pour vérifier qu'il reste valide.
+
+`npm run test:tout` ajoute quatre scénarios pilotés dans un vrai navigateur,
+qui vérifient ce qu'aucun test unitaire ne peut voir :
+
+| Scénario | Ce qu'il éprouve |
+|---|---|
+| `test:navigateur` | Rendu en 360 et 390 px, absence de débordement horizontal, démarrage réel de Stockfish, analyse continue. |
+| `test:assiste` | Verdict après un coup, reprise effective du coup, reconnaissance locale sur une capture d'échiquier réelle. |
+| `test:rapport` | Analyse incrémentale complète, précision, moments charnières, graphique. |
+| `test:hors-ligne` | Installation du service worker, coupure du réseau, partie et moteur hors ligne. |
+
+Ces tests ont trouvé des défauts qu'aucune relecture n'aurait montrés :
+détection de grille verrouillée sur un demi-pas, moteur répondant avant que
+le joueur ait choisi de reprendre son coup, moteur muet hors ligne.
 
 ## Licence
 
