@@ -2,7 +2,12 @@
  * Registre des moteurs de reconnaissance et utilitaires de post-traitement.
  */
 
-import { plateauVersPlacement, validateFenLegality } from '../lib/fen.ts';
+import {
+  plateauVersPlacement,
+  validateFenLegality,
+  verifierCoherenceMateriel,
+  type CoherenceMateriel,
+} from '../lib/fen.ts';
 import { ReconnaissanceLocale } from './local.ts';
 import { ReconnaissanceParLlm } from './llm.ts';
 import type { CaseReconnue, PositionRecognizer, ResultatReconnaissance } from './types.ts';
@@ -113,4 +118,66 @@ export function roquesPlausibles(plateau: CaseReconnue[][]): string {
     if (plateau[0][0] === 'r') r += 'q';
   }
   return r || '-';
+}
+
+
+/** Convertit une case algébrique en indices de plateau (rangée, colonne). */
+function indicesDe(caseAlg: string): { r: number; c: number } {
+  return { r: 8 - Number(caseAlg[1]), c: caseAlg.charCodeAt(0) - 97 };
+}
+
+export interface CorrectionMateriel {
+  /** Plateau proposé, où les pièces excédentaires les moins sûres ont été retirées. */
+  plateau: CaseReconnue[][];
+  /** Cases effectivement vidées. */
+  casesRetirees: string[];
+}
+
+/**
+ * Propose une correction à une position matériellement impossible.
+ *
+ * Principe : une position impossible vient presque toujours d'une pièce
+ * hallucinée ou mal lue. On retire donc les pièces EN SURNOMBRE dont la
+ * reconnaissance était la moins sûre, une par une, jusqu'à retomber sur un
+ * effectif atteignable.
+ *
+ * Cette fonction ne modifie jamais rien d'elle-même : elle renvoie une
+ * proposition que l'utilisateur accepte ou refuse.
+ */
+export function proposerCorrectionMateriel(
+  plateau: CaseReconnue[][],
+  confiances: number[][],
+): CorrectionMateriel {
+  const copie = plateau.map((r) => [...r]);
+  const casesRetirees: string[] = [];
+
+  // Au plus 16 retraits : garde-fou contre une position absurde qui ne
+  // convergerait pas.
+  for (let tour = 0; tour < 16; tour++) {
+    const coherence = verifierCoherenceMateriel(plateauVersPlacement(copie));
+    if (coherence.possible) break;
+
+    // On ne touche qu'aux cases désignées par le contrôle, jamais au reste.
+    const candidates = coherence.problemes
+      .flatMap((p) => p.cases)
+      .map((caseAlg) => {
+        const { r, c } = indicesDe(caseAlg);
+        return { caseAlg, r, c, confiance: confiances[r]?.[c] ?? 0.5 };
+      })
+      .filter((x) => copie[x.r]?.[x.c]);
+
+    if (candidates.length === 0) break;
+
+    candidates.sort((a, b) => a.confiance - b.confiance);
+    const moinsSure = candidates[0];
+    copie[moinsSure.r][moinsSure.c] = null;
+    casesRetirees.push(moinsSure.caseAlg);
+  }
+
+  return { plateau: copie, casesRetirees };
+}
+
+/** Contrôle de cohérence matérielle d'un plateau reconnu. */
+export function coherenceDuPlateau(plateau: CaseReconnue[][]): CoherenceMateriel {
+  return verifierCoherenceMateriel(plateauVersPlacement(plateau));
 }

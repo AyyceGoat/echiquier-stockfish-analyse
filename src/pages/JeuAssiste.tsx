@@ -25,7 +25,12 @@ import {
   COULEURS,
   type Classement,
 } from '../lib/classification.ts';
-import { expliquerCoup, uciVersSan, variantEnSan } from '../lib/explications.ts';
+import {
+  expliquerCoup,
+  uciVersSan,
+  variantEnSan,
+  type Explication,
+} from '../lib/explications.ts';
 import { FEN_INITIALE } from '../lib/fen.ts';
 import { recupererPosition } from '../lib/positionPartagee.ts';
 import { estCoupDeTheorie } from '../lib/ouvertures.ts';
@@ -53,7 +58,7 @@ interface Verdict {
   meilleurUci: string | null;
   meilleurSan: string | null;
   varianteSan: string[];
-  explication: string;
+  explication: Explication;
   /** FEN de la position d'où le coup a été joué, pour la flèche. */
   fenAvant: string;
 }
@@ -180,9 +185,10 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
             coupJoue: coupUci,
             meilleurCoup: meilleurUci,
             pvMeilleure,
+            pvApresCoupJoue: apresRes?.lignes[0]?.pv ?? [],
             avant,
             apres,
-            classement,
+            nbCoupsLegaux,
           }),
           fenAvant,
         });
@@ -516,7 +522,12 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
                 </p>
               ) : null}
 
-              <p className="mt-2 text-sm">{verdict.explication}</p>
+              <p className="mt-2 text-sm">{verdict.explication.phrase}</p>
+              {verdict.explication.complement ? (
+                <p className="mt-1 text-sm text-[var(--color-texte-doux)]">
+                  {verdict.explication.complement}
+                </p>
+              ) : null}
 
               {mauvaisCoup && verdict.meilleurSan ? (
                 <div className="mt-3 rounded-xl bg-[var(--color-fond-3)] p-3">

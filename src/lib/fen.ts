@@ -3,7 +3,12 @@
  *
  * Deux niveaux volontairement séparés :
  *  - `validateFenSyntax` ne dépend de rien et vérifie la forme du FEN.
- *  - `validateFenLegality` ajoute les règles d'échecs (rois, pions, roques).
+ *  - `validateFenLegality` ajoute ce qu'exigent `chess.js` et le moteur :
+ *    un roi par camp, aucun pion sur les rangées extrêmes, roques et prise
+ *    en passant cohérents.
+ *  - `verifierCoherenceMateriel` est un contrôle SÉPARÉ, réservé à la
+ *    reconnaissance d'image : il dit si un effectif est arithmétiquement
+ *    atteignable, sans jamais rien corriger de lui-même.
  * La reconnaissance d'image produit des FEN potentiellement absurdes :
  * on refuse d'afficher un FEN qui n'a pas passé les deux niveaux.
  */
@@ -187,19 +192,11 @@ export function validateFenLegality(fen: string): ResultatValidation {
   if (/[pP]/.test(rangees[0])) erreurs.push('Un pion se trouve sur la 8e rangée.');
   if (/[pP]/.test(rangees[7])) erreurs.push('Un pion se trouve sur la 1re rangée.');
 
-  // Effectifs
-  if (nb('P') > 8) erreurs.push(`${nb('P')} pions blancs (maximum 8).`);
-  if (nb('p') > 8) erreurs.push(`${nb('p')} pions noirs (maximum 8).`);
-
-  // Un pion promu libère un pion : pions + promotions excédentaires <= 8.
-  const surnombre = (pion: number, d: number, c: number, t: number, fo: number) =>
-    pion + Math.max(0, d - 1) + Math.max(0, c - 2) + Math.max(0, t - 2) + Math.max(0, fo - 2);
-  if (surnombre(nb('P'), nb('Q'), nb('N'), nb('R'), nb('B')) > 8) {
-    erreurs.push('Trop de pièces blanches au regard des promotions possibles.');
-  }
-  if (surnombre(nb('p'), nb('q'), nb('n'), nb('r'), nb('b')) > 8) {
-    erreurs.push('Trop de pièces noires au regard des promotions possibles.');
-  }
+  // Les effectifs ne sont PAS vérifiés ici. Une position peut être inhabituelle
+  // sans être impossible — trois tours après deux sous-promotions, cinq
+  // cavaliers — et rien ne justifie de refuser un FEN collé à la main ou une
+  // position atteinte en partie. Le contrôle de cohérence matérielle vit dans
+  // `verifierCoherenceMateriel`, et ne sert qu'à la reconnaissance d'image.
 
   // Roques : le roi et la tour concernés doivent être sur leur case initiale.
   const roquesValides = [...roques]
@@ -279,4 +276,159 @@ export function placementVersPlateau(placement: string): (string | null)[][] {
     while (out.length < 8) out.push(null);
     return out.slice(0, 8);
   });
+}
+
+
+/** Liste les cases occupées par un symbole donné, en notation algébrique. */
+export function casesDe(placement: string, symbole: string): string[] {
+  const out: string[] = [];
+  placement.split('/').forEach((rangee, idx) => {
+    let col = 0;
+    for (const c of rangee) {
+      if (c >= '1' && c <= '8') {
+        col += Number(c);
+      } else {
+        if (c === symbole) out.push(`${'abcdefgh'[col]}${8 - idx}`);
+        col += 1;
+      }
+    }
+  });
+  return out;
+}
+
+export interface ProblemeMateriel {
+  camp: 'blancs' | 'noirs';
+  /** Phrase explicative, en français, sans jargon. */
+  message: string;
+  /** Cases à mettre en évidence pour que l'œil sache où regarder. */
+  cases: string[];
+}
+
+export interface CoherenceMateriel {
+  possible: boolean;
+  problemes: ProblemeMateriel[];
+}
+
+const NOMS_PLURIEL: Record<string, string> = {
+  q: 'dames',
+  r: 'tours',
+  b: 'fous',
+  n: 'cavaliers',
+};
+
+/**
+ * La position est-elle matériellement atteignable ?
+ *
+ * Le seul critère rigoureux est la conservation du matériel par promotion :
+ * chaque pièce en surnombre a forcément été un pion, et ce pion manque donc
+ * à l'appel. Une sous-promotion est parfaitement légale — trois tours, cinq
+ * cavaliers — tant que les pions correspondants ont disparu.
+ *
+ *   excédent      = max(0, dames-1) + max(0, tours-2) + max(0, fous-2) + max(0, cavaliers-2)
+ *   pionsManquants = 8 - pions
+ *   atteignable    <=> excédent <= pionsManquants
+ *
+ * On ne se sert JAMAIS de ce contrôle pour corriger d'office : il sert à
+ * signaler, à expliquer, et à laisser le choix.
+ */
+export function verifierCoherenceMateriel(placement: string): CoherenceMateriel {
+  const n = compterPieces(placement);
+  const nb = (c: string) => n[c] ?? 0;
+  const problemes: ProblemeMateriel[] = [];
+  const rangees = placement.split('/');
+
+  for (const camp of ['blancs', 'noirs'] as const) {
+    const maj = camp === 'blancs';
+    const sym = (c: string) => (maj ? c.toUpperCase() : c);
+    const pions = nb(sym('p'));
+    const roi = nb(sym('k'));
+
+    const total =
+      pions + roi + nb(sym('q')) + nb(sym('r')) + nb(sym('b')) + nb(sym('n'));
+
+    if (roi !== 1) {
+      problemes.push({
+        camp,
+        message:
+          roi === 0
+            ? `Les ${camp} n'ont pas de roi : une position d'échecs en compte toujours un.`
+            : `Les ${camp} ont ${roi} rois : il ne peut y en avoir qu'un.`,
+        cases: casesDe(placement, sym('k')),
+      });
+    }
+
+    if (pions > 8) {
+      problemes.push({
+        camp,
+        message: `Les ${camp} ont ${pions} pions : un camp n'en a jamais plus de huit.`,
+        cases: casesDe(placement, sym('p')),
+      });
+    }
+
+    if (total > 16) {
+      problemes.push({
+        camp,
+        message: `Les ${camp} ont ${total} pièces : un camp n'en a jamais plus de seize.`,
+        cases: [],
+      });
+    }
+
+    // Conservation du matériel par promotion.
+    const excedent =
+      Math.max(0, nb(sym('q')) - 1) +
+      Math.max(0, nb(sym('r')) - 2) +
+      Math.max(0, nb(sym('b')) - 2) +
+      Math.max(0, nb(sym('n')) - 2);
+    const pionsManquants = Math.max(0, 8 - pions);
+
+    if (excedent > pionsManquants) {
+      // On nomme précisément les types en surnombre : c'est ce qui rend le
+      // message actionnable, là où « trop de pièces » ne dit rien.
+      const enSurnombre = (['q', 'r', 'b', 'n'] as const)
+        .map((t) => ({ t, sup: Math.max(0, nb(sym(t)) - (t === 'q' ? 1 : 2)) }))
+        .filter((x) => x.sup > 0);
+
+      const liste = enSurnombre
+        .map((x) => `${nb(sym(x.t))} ${NOMS_PLURIEL[x.t]}`)
+        .join(' et ');
+
+      problemes.push({
+        camp,
+        message:
+          `Les ${camp} ont ${liste} pour ${pions} pion${pions > 1 ? 's' : ''} : ` +
+          `chaque pièce en trop vient d'une promotion, et il faudrait donc ` +
+          `${excedent} pion${excedent > 1 ? 's' : ''} de moins.`,
+        cases: enSurnombre.flatMap((x) => casesDe(placement, sym(x.t))),
+      });
+    }
+  }
+
+  // Pions sur les rangées extrêmes : un pion n'y arrive jamais, il y promeut.
+  for (const [idx, nomRangee] of [
+    [0, '8e'],
+    [7, '1re'],
+  ] as const) {
+    const pionsIndus = [...rangees[idx]].filter((c) => c === 'p' || c === 'P');
+    if (pionsIndus.length > 0) {
+      problemes.push({
+        camp: pionsIndus[0] === 'P' ? 'blancs' : 'noirs',
+        message: `Un pion se trouve sur la ${nomRangee} rangée, où il aurait dû être promu.`,
+        cases: [...rangees[idx]]
+          .reduce<{ col: number; out: string[] }>(
+            (acc, c) => {
+              if (c >= '1' && c <= '8') acc.col += Number(c);
+              else {
+                if (c === 'p' || c === 'P') acc.out.push(`${'abcdefgh'[acc.col]}${8 - idx}`);
+                acc.col += 1;
+              }
+              return acc;
+            },
+            { col: 0, out: [] },
+          )
+          .out,
+      });
+    }
+  }
+
+  return { possible: problemes.length === 0, problemes };
 }

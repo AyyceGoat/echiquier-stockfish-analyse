@@ -206,7 +206,7 @@ export function Rapport({
         evaluationApres: c.apres,
         meilleurSan: c.meilleurSan,
         varianteSan: c.varianteSan,
-        explication: c.explication,
+        explication: c.explication.phrase,
       })),
       {
         Event: 'Partie analysée',
@@ -364,7 +364,7 @@ export function Rapport({
                     {LIBELLES[m.classement]}
                   </span>
                   <span className="mt-0.5 block text-xs text-[var(--color-texte-doux)]">
-                    {m.explication}
+                    {m.explication.phrase}
                   </span>
                 </button>
               </li>
@@ -427,7 +427,12 @@ export function Rapport({
                 })()}
               </div>
 
-              <p className="mt-2 text-sm">{coupActif.explication}</p>
+              <p className="mt-2 text-sm">{coupActif.explication.phrase}</p>
+              {coupActif.explication.complement ? (
+                <p className="mt-1 text-sm text-[var(--color-texte-doux)]">
+                  {coupActif.explication.complement}
+                </p>
+              ) : null}
 
               {!coupActif.estMeilleurCoup && coupActif.meilleurSan ? (
                 <div className="mt-3 rounded-xl bg-[var(--color-fond-3)] p-3">

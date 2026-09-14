@@ -8,11 +8,18 @@
  * peut pas dire : le trait, les roques, la prise en passant, le numéro de coup.
  *
  * Rien ne sort d'ici sans avoir passé `validateFenLegality`.
+ *
+ * Le contrôle de cohérence matérielle est SÉPARÉ et purement consultatif :
+ * une position peut être inhabituelle sans être impossible, et seule
+ * l'impossibilité arithmétique est signalée. Même dans ce cas, rien n'est
+ * corrigé d'office — l'écran propose, l'utilisateur tranche.
  */
 
 import { createElement, useMemo, useState } from 'react';
 import {
+  coherenceDuPlateau,
   fenDepuisPlateau,
+  proposerCorrectionMateriel,
   retournerPlateau,
   roquesPlausibles,
   type CaseReconnue,
@@ -74,6 +81,31 @@ export function EcranCorrection({
   const [roques, setRoques] = useState(() => roquesPlausibles(resultat.plateau));
   const [priseEnPassant, setPriseEnPassant] = useState('-');
   const [numeroCoup, setNumeroCoup] = useState('1');
+  const [coherenceIgnoree, setCoherenceIgnoree] = useState(false);
+
+  const coherence = useMemo(() => coherenceDuPlateau(plateau), [plateau]);
+
+  // Cases désignées par le contrôle, pour le surlignage orange.
+  const casesSuspectes = useMemo(
+    () => new Set(coherence.problemes.flatMap((p) => p.cases)),
+    [coherence],
+  );
+
+  const appliquerCorrection = () => {
+    const { plateau: corrige, casesRetirees } = proposerCorrectionMateriel(plateau, confiances);
+    setPlateau(corrige);
+    // Les cases vidées redeviennent certaines : c'est un choix explicite.
+    setConfiances((precedent) => {
+      const suite = precedent.map((r) => [...r]);
+      for (const caseAlg of casesRetirees) {
+        const r = 8 - Number(caseAlg[1]);
+        const c = caseAlg.charCodeAt(0) - 97;
+        if (suite[r]) suite[r][c] = 1;
+      }
+      return suite;
+    });
+    setCoherenceIgnoree(false);
+  };
 
   const validation = useMemo(
     () =>
@@ -170,6 +202,7 @@ export function EcranCorrection({
                 rangee.map((symbole, c) => {
                   const claire = (r + c) % 2 === 0;
                   const douteuse = confiancesAffichees[r][c] < seuilConfiance;
+                  const suspecte = casesSuspectes.has(nomDeCase(r, c));
                   return (
                     <button
                       key={`${r}-${c}`}
@@ -177,10 +210,12 @@ export function EcranCorrection({
                       onClick={() => modifierCase(r, c)}
                       aria-label={`Case ${nomDeCase(r, c)}${
                         symbole ? `, contient ${symbole}` : ', vide'
-                      }${douteuse ? ', à vérifier' : ''}`}
+                      }${douteuse ? ', à vérifier' : ''}${
+                        suspecte ? ', effectif impossible' : ''
+                      }`}
                       className={`relative aspect-square ${
                         claire ? 'bg-[#f0d9b5]' : 'bg-[#b58863]'
-                      } ${douteuse ? 'case-douteuse' : ''}`}
+                      } ${suspecte ? 'case-impossible' : douteuse ? 'case-douteuse' : ''}`}
                     >
                       {symbole ? <Piece symbole={symbole} /> : null}
                     </button>
@@ -322,6 +357,27 @@ export function EcranCorrection({
           </div>
         </div>
       </Carte>
+
+      {!coherence.possible && !coherenceIgnoree ? (
+        <Alerte titre="Cet effectif est impossible sur un échiquier" ton="alerte">
+          <ul className="list-inside list-disc space-y-0.5">
+            {coherence.problemes.map((p, i) => (
+              <li key={i}>{p.message}</li>
+            ))}
+          </ul>
+          <p className="mt-2">
+            Les cases concernées sont encadrées en orange. Une position inhabituelle n’est pas
+            forcément fausse : trois tours ou cinq cavaliers sont légaux après des promotions.
+            Seul un effectif arithmétiquement impossible est signalé ici.
+          </p>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <Bouton variante="principal" onClick={appliquerCorrection}>
+              Appliquer la correction
+            </Bouton>
+            <Bouton onClick={() => setCoherenceIgnoree(true)}>Garder tel quel</Bouton>
+          </div>
+        </Alerte>
+      ) : null}
 
       {validation.erreurs.length > 0 ? (
         <Alerte titre="Cette position n’est pas valide">

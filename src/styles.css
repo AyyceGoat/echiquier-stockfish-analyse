@@ -222,3 +222,12 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
+
+/* Case dont l'effectif est arithmétiquement impossible : plus insistant que
+   le simple doute de reconnaissance, et d'une autre teinte pour qu'on
+   distingue « à vérifier » de « impossible ». */
+.case-impossible {
+  box-shadow:
+    inset 0 0 0 3px rgba(249, 115, 22, 0.95),
+    inset 0 0 0 6px rgba(249, 115, 22, 0.35);
+}

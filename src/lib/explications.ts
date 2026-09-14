@@ -1,43 +1,81 @@
 /**
- * Explications en français des coups manqués.
+ * Générateur d'explications en langage clair.
  *
- * L'objectif n'est pas de commenter comme un entraîneur humain, mais de
- * répondre à la seule question utile : « qu'est-ce que le meilleur coup
- * faisait que le mien ne faisait pas ? ». On combine donc trois sources :
- * la différence d'évaluation, le matériel réellement gagné ou perdu dans la
- * variante, et des motifs tactiques reconnaissables (fourchette, pièce en
- * prise, mat forcé). Aucune explication n'est inventée : si rien n'est
- * détecté, on reste factuel sur l'évaluation.
+ * Entièrement déterministe : il ne consomme que ce que Stockfish fournit
+ * déjà — l'évaluation avant et après, le meilleur coup, la variante — plus
+ * la géométrie de la position. Aucun appel réseau, aucun modèle de langage,
+ * donc utilisable hors ligne et sans clé d'API.
+ *
+ * Règle de rédaction : la phrase principale ne contient JAMAIS de chiffre
+ * d'évaluation. « Ce coup laisse votre cavalier en f6 en prise » apprend
+ * quelque chose ; « ce coup vous coûte 0,77 » n'apprend rien. La valeur
+ * numérique reste disponible à côté, pour qui la lit.
+ *
+ * Le même générateur sert au mode assisté, au rapport de fin de partie et à
+ * l'exploration de variantes.
  */
 
 import { Chess, type Color, type PieceSymbol, type Square } from 'chess.js';
-import { evaluationEnCp, type Evaluation } from './uci.ts';
-import type { Classement } from './classification.ts';
+import {
+  autreCouleur,
+  avecArticle,
+  avecPossessif,
+  clouages,
+  detaillerCoup,
+  enfilades,
+  fourchetteDepuis,
+  jouerSuite,
+  NOMS,
+  piecesEnPrise,
+  avecTraitInverse,
+  VALEURS,
+} from './motifs.ts';
+import type { Evaluation } from './uci.ts';
 
-const VALEURS: Record<PieceSymbol, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 };
+export type MotifExplication =
+  | 'mat-manque'
+  | 'mat-subi'
+  | 'piece-en-prise'
+  | 'occasion-manquee'
+  | 'menace-ignoree'
+  | 'fourchette'
+  | 'clouage'
+  | 'enfilade'
+  | 'coup-force'
+  | 'passif'
+  | 'sans-consequence';
 
-export const NOMS_PIECES: Record<PieceSymbol, string> = {
-  p: 'pion',
-  n: 'cavalier',
-  b: 'fou',
-  r: 'tour',
-  q: 'dame',
-  k: 'roi',
-};
+export interface Explication {
+  /** Phrase principale, en français simple, sans chiffre d'évaluation. */
+  phrase: string;
+  /** Seconde phrase facultative : ce qu'il fallait jouer. */
+  complement?: string;
+  /** Motif reconnu, exploitable pour les statistiques et les exercices. */
+  motif: MotifExplication;
+}
 
-/** Convertit un coup UCI en notation algébrique française lisible (SAN anglais conservé). */
+export interface ContexteExplication {
+  /** FEN avant le coup joué. */
+  fenAvant: string;
+  /** Coup réellement joué, en UCI. */
+  coupJoue: string;
+  /** Meilleur coup selon le moteur, en UCI. */
+  meilleurCoup: string | null;
+  /** Variante principale du moteur depuis `fenAvant`, en UCI. */
+  pvMeilleure: string[];
+  /** Variante du moteur APRÈS le coup joué : c'est la réfutation. */
+  pvApresCoupJoue?: string[];
+  /** Évaluation avant le coup, du point de vue du joueur qui joue. */
+  avant: Evaluation;
+  /** Évaluation après le coup, du point de vue du même joueur. */
+  apres: Evaluation;
+  /** Nombre de coups légaux dont disposait le joueur. */
+  nbCoupsLegaux?: number;
+}
+
+/** Convertit un coup UCI en notation algébrique. */
 export function uciVersSan(fen: string, uci: string): string | null {
-  try {
-    const jeu = new Chess(fen);
-    const coup = jeu.move({
-      from: uci.slice(0, 2) as Square,
-      to: uci.slice(2, 4) as Square,
-      promotion: uci.length > 4 ? (uci[4] as 'q' | 'r' | 'b' | 'n') : undefined,
-    });
-    return coup ? coup.san : null;
-  } catch {
-    return null;
-  }
+  return detaillerCoup(fen, uci)?.san ?? null;
 }
 
 /** Convertit une suite de coups UCI en SAN, en s'arrêtant au premier coup illégal. */
@@ -60,255 +98,242 @@ export function variantEnSan(fen: string, pv: string[], maxCoups = 5): string[] 
   return out;
 }
 
-/** Bilan matériel d'une position, du point de vue des blancs, en points. */
-function materiel(jeu: Chess): number {
-  let total = 0;
-  for (const rangee of jeu.board()) {
-    for (const c of rangee) {
-      if (!c) continue;
-      total += c.color === 'w' ? VALEURS[c.type] : -VALEURS[c.type];
+/** Nom de la pièce présente sur une case, avant le coup. */
+function pieceSur(fen: string, sq: Square): PieceSymbol | null {
+  try {
+    return new Chess(fen).get(sq)?.type ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function pluriel(n: number, mot: string): string {
+  return `${n} ${mot}${n > 1 ? 's' : ''}`;
+}
+
+/** Ce que le meilleur coup accomplissait, en une proposition. */
+function apportDuMeilleurCoup(ctx: ContexteExplication): string | null {
+  if (!ctx.meilleurCoup) return null;
+  const d = detaillerCoup(ctx.fenAvant, ctx.meilleurCoup);
+  if (!d) return null;
+
+  if (d.mat) return `${d.san} matait immédiatement`;
+  if (d.capture && VALEURS[d.capture] >= 3) {
+    return `${d.san} prenait ${avecArticle(d.capture)} en ${d.vers}`;
+  }
+
+  const monCamp = new Chess(ctx.fenAvant).turn() as Color;
+  const vue = avecTraitInverse(d.apres);
+  if (vue) {
+    const f = fourchetteDepuis(vue, d.vers, monCamp);
+    if (f) {
+      const noms = f.cibles.slice(0, 2).map((c) => avecArticle(c.type));
+      return `${d.san} attaquait à la fois ${noms[0]} et ${noms[1]}`;
     }
   }
-  return total;
-}
 
-/** Une pièce est-elle en prise (attaquée et insuffisamment défendue) ? */
-function estEnPrise(jeu: Chess, sq: Square, couleur: Color): boolean {
-  const adverse: Color = couleur === 'w' ? 'b' : 'w';
-  if (!jeu.isAttacked(sq, adverse)) return false;
-  const piece = jeu.get(sq);
-  if (!piece) return false;
-  const defenseurs = jeu.attackers(sq, couleur).length;
-  if (defenseurs === 0) return true;
-  // Défendue, mais attaquée par moins cher : l'échange reste perdant.
-  const attaquants = jeu.attackers(sq, adverse);
-  const moinsCher = Math.min(
-    ...attaquants.map((a) => VALEURS[jeu.get(a)?.type ?? 'p']),
-  );
-  return moinsCher < VALEURS[piece.type];
-}
-
-/** Cherche les pièces adverses de valeur attaquées par la pièce qui vient de jouer. */
-function ciblesDeLaPiece(jeu: Chez, depuis: Square, couleur: Color): PieceSymbol[] {
-  const adverse: Color = couleur === 'w' ? 'b' : 'w';
-  const coups = jeu.moves({ square: depuis, verbose: true });
-  const cibles: PieceSymbol[] = [];
-  for (const c of coups) {
-    const cible = jeu.get(c.to as Square);
-    if (cible && cible.color === adverse && VALEURS[cible.type] >= 3) {
-      cibles.push(cible.type);
-    }
-  }
-  return cibles;
-}
-
-// Alias de type interne : chess.js n'exporte pas le type de l'instance.
-type Chez = InstanceType<typeof Chess>;
-
-export interface ContexteExplication {
-  /** FEN avant le coup joué. */
-  fenAvant: string;
-  /** Coup réellement joué (UCI). */
-  coupJoue: string;
-  /** Meilleur coup selon le moteur (UCI). */
-  meilleurCoup: string | null;
-  /** Variante principale du moteur depuis `fenAvant` (UCI). */
-  pvMeilleure: string[];
-  /** Évaluation avant, du point de vue du joueur au trait. */
-  avant: Evaluation;
-  /** Évaluation après le coup joué, du point de vue du même joueur. */
-  apres: Evaluation;
-  classement: Classement;
+  if (d.roque) return `${d.san} mettait votre roi à l'abri`;
+  if (d.capture) return `${d.san} prenait ${avecArticle(d.capture)} en ${d.vers}`;
+  return null;
 }
 
 /**
- * Produit une explication d'une à deux phrases.
- * Elle décrit d'abord ce que le meilleur coup accomplissait, puis, si le coup
- * joué a une faiblesse identifiable, ce qu'il concède.
+ * Produit l'explication d'un coup.
+ *
+ * L'ordre des tests est délibéré : on annonce toujours le fait le plus grave
+ * et le plus concret. Un mat manqué prime sur une pièce en prise, qui prime
+ * sur un motif géométrique, qui prime sur « ce coup est passif ».
  */
-export function expliquerCoup(ctx: ContexteExplication): string {
-  const morceaux: string[] = [];
+export function expliquerCoup(ctx: ContexteExplication): Explication {
+  const jeuAvant = new Chess(ctx.fenAvant);
+  const monCamp = jeuAvant.turn() as Color;
+  const adverse = autreCouleur(monCamp);
 
-  // 1. Un mat forcé manqué prime sur tout le reste.
-  if (ctx.avant.type === 'mat' && ctx.avant.valeur > 0 && ctx.apres.type !== 'mat') {
-    morceaux.push(
-      `Il y avait un mat forcé en ${ctx.avant.valeur} coup${ctx.avant.valeur > 1 ? 's' : ''}.`,
-    );
-  } else if (ctx.apres.type === 'mat' && ctx.apres.valeur < 0) {
-    morceaux.push(
-      `Ce coup permet à l'adversaire de mater en ${Math.abs(ctx.apres.valeur)} coup${
-        Math.abs(ctx.apres.valeur) > 1 ? 's' : ''
-      }.`,
-    );
+  const coup = detaillerCoup(ctx.fenAvant, ctx.coupJoue);
+  const meilleurSan = ctx.meilleurCoup ? uciVersSan(ctx.fenAvant, ctx.meilleurCoup) : null;
+  const apport = apportDuMeilleurCoup(ctx);
+  const complementMeilleur = meilleurSan
+    ? apport
+      ? `${apport.charAt(0).toUpperCase()}${apport.slice(1)}.`
+      : `Il fallait jouer ${meilleurSan}.`
+    : undefined;
+
+  // --- 1. Coup forcé : rien à reprocher, et il faut le dire ---
+  if (ctx.nbCoupsLegaux === 1) {
+    return {
+      phrase: 'Ce coup était le seul possible.',
+      motif: 'coup-force',
+    };
   }
 
-  // 2. Ce que rapportait la variante du moteur, en matériel.
-  const gainMeilleur = gainMateriel(ctx.fenAvant, ctx.pvMeilleure);
-  const gainJoue = gainMateriel(ctx.fenAvant, [ctx.coupJoue]);
+  // --- 2. Mat subi ---
+  if (ctx.apres.type === 'mat' && ctx.apres.valeur < 0) {
+    const n = Math.abs(ctx.apres.valeur);
+    return {
+      phrase:
+        n === 0
+          ? 'Ce coup laisse votre roi mat.'
+          : `Ce coup permet à l'adversaire de mater en ${pluriel(n, 'coup')}.`,
+      complement: complementMeilleur,
+      motif: 'mat-subi',
+    };
+  }
 
-  if (morceaux.length === 0 && ctx.meilleurCoup) {
-    const san = uciVersSan(ctx.fenAvant, ctx.meilleurCoup);
-    const motif = detecterMotif(ctx.fenAvant, ctx.meilleurCoup);
+  // --- 3. Mat manqué ---
+  if (
+    ctx.avant.type === 'mat' &&
+    ctx.avant.valeur > 0 &&
+    !(ctx.apres.type === 'mat' && ctx.apres.valeur > 0)
+  ) {
+    const n = ctx.avant.valeur;
+    return {
+      phrase: meilleurSan
+        ? `Il y avait un mat en ${pluriel(n, 'coup')} avec ${meilleurSan}.`
+        : `Il y avait un mat en ${pluriel(n, 'coup')}.`,
+      motif: 'mat-manque',
+    };
+  }
 
-    if (gainMeilleur >= 1 && gainMeilleur > gainJoue) {
-      const nom = nommerGain(gainMeilleur);
-      morceaux.push(`${san} gagnait ${nom}.`);
-    } else if (motif) {
-      morceaux.push(`${san} ${motif}.`);
+  // --- 4. Pièce laissée en prise ---
+  // On lit la position après le coup joué : c'est là que la pièce se trouve
+  // exposée, et c'est ce que le joueur a sous les yeux.
+  if (coup) {
+    const enPrise = piecesEnPrise(coup.apres, monCamp);
+    if (enPrise.length > 0) {
+      const p = enPrise[0];
+      const cestLaPieceDeplacee = p.case === coup.vers;
+      return {
+        phrase: cestLaPieceDeplacee
+          ? `Ce coup laisse ${avecPossessif(p.type)} en ${p.case} en prise.`
+          : `Ce coup laisse ${avecPossessif(p.type)} en ${p.case} sans défense.`,
+        complement: complementMeilleur,
+        motif: 'piece-en-prise',
+      };
     }
   }
 
-  // 3. Ce que le coup joué concède.
-  const faiblesse = detecterFaiblesse(ctx.fenAvant, ctx.coupJoue);
-  if (faiblesse) morceaux.push(faiblesse);
-
-  // 4. Repli factuel : toujours dire quelque chose d'exact.
-  if (morceaux.length === 0) {
-    const perte = Math.round(
-      (evaluationEnCp(ctx.avant) - evaluationEnCp(ctx.apres)) / 10,
-    ) / 10;
-    if (perte >= 0.2) {
-      morceaux.push(
-        `Ce coup cède ${perte.toFixed(2).replace('.', ',')} pion${perte >= 2 ? 's' : ''} d'évaluation sans compensation visible.`,
+  // --- 5. Menace adverse ignorée ---
+  // La menace existait AVANT le coup, et existe encore APRÈS : le coup ne
+  // s'en occupe pas.
+  if (coup) {
+    const vueAvant = avecTraitInverse(jeuAvant);
+    if (vueAvant) {
+      const menaceesAvant = piecesEnPrise(vueAvant, monCamp);
+      const encoreMenacees = piecesEnPrise(coup.apres, monCamp).map((p) => p.case);
+      const ignoree = menaceesAvant.find(
+        (p) => encoreMenacees.includes(p.case) || p.case === coup.depuis,
       );
-    } else {
-      morceaux.push("Ce coup ne change pas l'appréciation de la position.");
-    }
-  }
-
-  return morceaux.join(' ');
-}
-
-function nommerGain(points: number): string {
-  if (points >= 8) return 'une dame';
-  if (points >= 4.5) return 'une tour';
-  if (points >= 2.5) return 'une pièce';
-  if (points >= 1.5) return 'la qualité';
-  return 'un pion';
-}
-
-/** Matériel gagné (en points, du point de vue du joueur au trait) au fil d'une variante. */
-function gainMateriel(fen: string, pv: string[]): number {
-  try {
-    const jeu = new Chess(fen);
-    const camp = jeu.turn();
-    const avant = materiel(jeu);
-    for (const uci of pv.slice(0, 6)) {
-      const coup = jeu.move({
-        from: uci.slice(0, 2) as Square,
-        to: uci.slice(2, 4) as Square,
-        promotion: uci.length > 4 ? (uci[4] as 'q' | 'r' | 'b' | 'n') : undefined,
-      });
-      if (!coup) break;
-    }
-    const apres = materiel(jeu);
-    return camp === 'w' ? apres - avant : avant - apres;
-  } catch {
-    return 0;
-  }
-}
-
-/** Motifs tactiques reconnaissables produits par un coup. */
-function detecterMotif(fen: string, uci: string): string | null {
-  try {
-    const jeu = new Chess(fen);
-    const camp = jeu.turn();
-    const coup = jeu.move({
-      from: uci.slice(0, 2) as Square,
-      to: uci.slice(2, 4) as Square,
-      promotion: uci.length > 4 ? (uci[4] as 'q' | 'r' | 'b' | 'n') : undefined,
-    });
-    if (!coup) return null;
-
-    if (jeu.isCheckmate()) return 'matait immédiatement';
-
-    // Fourchette : la pièce qui vient de jouer attaque deux pièces de valeur.
-    // On repasse le trait au joueur pour lire les attaques de sa pièce.
-    const fenApres = jeu.fen();
-    const fenTraitInverse = fenApres.replace(
-      / [wb] /,
-      camp === 'w' ? ' w ' : ' b ',
-    );
-    try {
-      const vue = new Chess(fenTraitInverse);
-      const cibles = ciblesDeLaPiece(vue, coup.to as Square, camp);
-      if (cibles.length >= 2) {
-        return `créait une double attaque sur ${cibles
-          .slice(0, 2)
-          .map((t) => `le ${NOMS_PIECES[t]}`)
-          .join(' et ')}`;
+      if (ignoree && encoreMenacees.includes(ignoree.case)) {
+        const attaquant = coup.apres.attackers(ignoree.case, adverse)[0];
+        const typeAttaquant = attaquant ? coup.apres.get(attaquant)?.type : null;
+        return {
+          phrase:
+            typeAttaquant && attaquant
+              ? `${avecPossessif(ignoree.type)} reste menacé${
+                  ignoree.type === 'r' || ignoree.type === 'q' ? 'e' : ''
+                } par ${avecArticle(typeAttaquant)} en ${attaquant}.`
+              : `${avecPossessif(ignoree.type)} reste menacé${
+                  ignoree.type === 'r' || ignoree.type === 'q' ? 'e' : ''
+                }.`,
+          complement: complementMeilleur,
+          motif: 'menace-ignoree',
+        };
       }
-    } catch {
-      // Position intermédiaire illégale (roi en prise) : on passe.
     }
-
-    if (coup.san.includes('=')) return 'promouvait le pion';
-    if (jeu.isCheck()) return "donnait échec et prenait l'initiative";
-    if (coup.captured) return `prenait ${articleDe(coup.captured)}`;
-    if (coup.san === 'O-O' || coup.san === 'O-O-O') return 'mettait le roi à l’abri';
-
-    // Activation : la pièce gagne nettement en mobilité.
-    const mobiliteAvant = new Chess(fen).moves({
-      square: coup.from as Square,
-      verbose: true,
-    }).length;
-    const mobiliteApres = (() => {
-      try {
-        const vue = new Chess(fenApres.replace(/ [wb] /, camp === 'w' ? ' w ' : ' b '));
-        return vue.moves({ square: coup.to as Square, verbose: true }).length;
-      } catch {
-        return 0;
-      }
-    })();
-    if (mobiliteApres >= mobiliteAvant + 4) {
-      return `activait ${articleDe(coup.piece)} sur une case bien plus active`;
-    }
-
-    return null;
-  } catch {
-    return null;
   }
-}
 
-function articleDe(p: PieceSymbol): string {
-  const nom = NOMS_PIECES[p];
-  return nom === 'tour' || nom === 'dame' ? `la ${nom}` : `le ${nom}`;
-}
-
-/** Ce que le coup joué laisse à l'adversaire. */
-function detecterFaiblesse(fen: string, uci: string): string | null {
-  try {
-    const jeu = new Chess(fen);
-    const camp = jeu.turn();
-    const coup = jeu.move({
-      from: uci.slice(0, 2) as Square,
-      to: uci.slice(2, 4) as Square,
-      promotion: uci.length > 4 ? (uci[4] as 'q' | 'r' | 'b' | 'n') : undefined,
-    });
-    if (!coup) return null;
-
-    if (jeu.isCheckmate()) return null;
-
-    // La pièce déplacée est-elle désormais en prise ?
-    if (estEnPrise(jeu, coup.to as Square, camp)) {
-      return `Elle laisse ${articleDe(coup.piece)} en ${coup.to} insuffisamment défendu${
-        coup.piece === 'r' || coup.piece === 'q' ? 'e' : ''
-      }.`;
-    }
-
-    // Une autre pièce se retrouve-t-elle en prise après ce coup ?
-    for (const rangee of jeu.board()) {
-      for (const c of rangee) {
-        if (!c || c.color !== camp || c.type === 'k' || c.type === 'p') continue;
-        if (c.square === coup.to) continue;
-        if (estEnPrise(jeu, c.square as Square, camp) && VALEURS[c.type] >= 3) {
-          return `Elle laisse ${articleDe(c.type)} en ${c.square} sans défense suffisante.`;
+  // --- 6. Motifs géométriques subis après le coup ---
+  if (coup) {
+    // Fourchette adverse : la réponse du moteur attaque deux de nos pièces.
+    const reponse = ctx.pvApresCoupJoue?.[0];
+    if (reponse) {
+      const apresReponse = jouerSuite(coup.apres.fen(), [reponse]);
+      const detailReponse = detaillerCoup(coup.apres.fen(), reponse);
+      if (detailReponse) {
+        const vue = avecTraitInverse(apresReponse);
+        if (vue) {
+          const f = fourchetteDepuis(vue, detailReponse.vers, adverse);
+          if (f) {
+            const noms = f.cibles.slice(0, 2).map((c) => avecPossessif(c.type));
+            return {
+              phrase: `Ce coup permet ${detailReponse.san}, qui attaque à la fois ${noms[0]} et ${noms[1]}.`,
+              complement: complementMeilleur,
+              motif: 'fourchette',
+            };
+          }
         }
       }
     }
 
-    return null;
-  } catch {
-    return null;
+    const cloues = clouages(coup.apres, monCamp);
+    if (cloues.length > 0) {
+      const c = cloues[0];
+      return {
+        phrase: c.absolu
+          ? `Ce coup cloue ${avecPossessif(c.devant.type)} en ${c.devant.case} : il ne peut plus bouger sans exposer votre roi.`
+          : `${avecPossessif(c.devant.type)} en ${c.devant.case} est cloué${
+              c.devant.type === 'r' || c.devant.type === 'q' ? 'e' : ''
+            } devant ${avecPossessif(c.derriere.type)}.`,
+        complement: complementMeilleur,
+        motif: 'clouage',
+      };
+    }
+
+    const enfilees = enfilades(coup.apres, monCamp);
+    if (enfilees.length > 0) {
+      const e = enfilees[0];
+      return {
+        phrase: `${avecPossessif(e.devant.type)} en ${e.devant.case} est en enfilade : en la déplaçant vous abandonnez ${avecPossessif(
+          e.derriere.type,
+        )} juste derrière.`,
+        complement: complementMeilleur,
+        motif: 'enfilade',
+      };
+    }
   }
+
+  // --- 7. Occasion manquée : le meilleur coup gagnait du matériel ---
+  if (ctx.meilleurCoup && ctx.meilleurCoup !== ctx.coupJoue) {
+    const d = detaillerCoup(ctx.fenAvant, ctx.meilleurCoup);
+    if (d?.capture && VALEURS[d.capture] >= 3) {
+      const cible = pieceSur(ctx.fenAvant, d.vers);
+      return {
+        phrase: `Vous pouviez prendre ${avecArticle(cible ?? d.capture)} en ${d.vers}.`,
+        complement: `${d.san} était le coup à jouer.`,
+        motif: 'occasion-manquee',
+      };
+    }
+  }
+
+  // --- 8. Coup jouable mais mou ---
+  if (meilleurSan && ctx.meilleurCoup !== ctx.coupJoue) {
+    return {
+      phrase: apport
+        ? `Ce coup est jouable, mais ${apport}.`
+        : `Ce coup est jouable mais passif ; ${meilleurSan} est plus actif.`,
+      motif: 'passif',
+    };
+  }
+
+  return {
+    phrase: "Ce coup ne change pas l'appréciation de la position.",
+    motif: 'sans-consequence',
+  };
 }
+
+/** Libellé court du motif, pour les filtres et les exercices. */
+export const LIBELLE_MOTIF: Record<MotifExplication, string> = {
+  'mat-manque': 'Mat manqué',
+  'mat-subi': 'Mat concédé',
+  'piece-en-prise': 'Pièce en prise',
+  'occasion-manquee': 'Occasion manquée',
+  'menace-ignoree': 'Menace ignorée',
+  fourchette: 'Fourchette',
+  clouage: 'Clouage',
+  enfilade: 'Enfilade',
+  'coup-force': 'Coup forcé',
+  passif: 'Coup passif',
+  'sans-consequence': 'Sans conséquence',
+};
+
+export { NOMS, avecArticle, avecPossessif };

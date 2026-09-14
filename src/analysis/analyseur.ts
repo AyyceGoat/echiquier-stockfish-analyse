@@ -22,7 +22,12 @@ import {
   type Classement,
   type SeuilsClassification,
 } from '../lib/classification.ts';
-import { expliquerCoup, uciVersSan, variantEnSan } from '../lib/explications.ts';
+import {
+  expliquerCoup,
+  uciVersSan,
+  variantEnSan,
+  type Explication,
+} from '../lib/explications.ts';
 import { estCoupDeTheorie, trouverOuverture } from '../lib/ouvertures.ts';
 import {
   evaluationEnCp,
@@ -58,7 +63,7 @@ export interface CoupAnalyse {
   varianteSan: string[];
   /** Variante recommandée, en UCI, pour la rejouer sur l'échiquier. */
   varianteUci: string[];
-  explication: string;
+  explication: Explication;
   estMeilleurCoup: boolean;
 }
 
@@ -279,9 +284,13 @@ export async function analyserPartie(
         coupJoue: coupsUci[i],
         meilleurCoup: meilleurUci,
         pvMeilleure,
+        // La variante calculée sur la position d'arrivée est exactement la
+        // réfutation du coup joué : c'est elle qui révèle fourchettes et
+        // pièces en prise.
+        pvApresCoupJoue: suivant === 'terminale' ? [] : (suivant.lignes[0]?.pv ?? []),
         avant,
         apres,
-        classement,
+        nbCoupsLegaux: nbCoupsLegaux[i],
       }),
       estMeilleurCoup,
     };
