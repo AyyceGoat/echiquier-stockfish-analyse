@@ -9,7 +9,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useReglages } from '../contexte.tsx';
 import { estimerStockage, historiqueDisponible } from '../db/parties.ts';
-import { detecterCapacites, VERSION_MOTEUR, type Capacites } from '../engine/capacites.ts';
+import {
+  detecterCapacites,
+  nomVariante,
+  VERSION_SF18,
+  VERSION_SF19,
+  type Capacites,
+} from '../engine/capacites.ts';
 import { useEtatMoteur, useMoteur } from '../hooks/useMoteur.ts';
 import { moteurReconnaissance } from '../recognition/index.ts';
 import { Alerte, Bouton, Carte, Etiquette } from '../ui/composants.tsx';
@@ -89,7 +95,7 @@ export function Diagnostic({ naviguer }: { naviguer: (v: string) => void }) {
     `Threads WebAssembly : ${ouiNon(capacites.wasmThreads)}`,
     `Cœurs logiques : ${capacites.coeurs}`,
     `Mémoire annoncée : ${capacites.memoireGo ?? 'inconnue'} Go`,
-    `Build Stockfish : ${VERSION_MOTEUR} ${moteur.profil.variante}`,
+    `Build Stockfish : ${moteur.varianteChargee ? nomVariante(moteur.varianteChargee) : 'non chargé'}`,
     `Threads actifs : ${moteur.profil.threads}`,
     `Table de hachage : ${moteur.profil.hash} Mo`,
     `Profondeur par défaut : ${moteur.profil.profondeurParDefaut}`,
@@ -169,21 +175,30 @@ export function Diagnostic({ naviguer }: { naviguer: (v: string) => void }) {
           </Bouton>
         }
       >
-        <Ligne cle="Version" valeur={`Stockfish ${VERSION_MOTEUR} (lite)`} />
+        <Ligne
+          cle="Version"
+          valeur={
+            moteur.varianteChargee === 'sf19'
+              ? `Stockfish ${VERSION_SF19}`
+              : `Stockfish ${VERSION_SF18} (lite)`
+          }
+        />
         <Ligne
           cle="Build chargé"
           valeur={
-            moteur.varianteChargee === 'multithread'
-              ? 'multi-thread'
-              : moteur.varianteChargee === 'monothread'
-                ? 'mono-thread'
-                : `prévu : ${moteur.profil.variante === 'multithread' ? 'multi-thread' : 'mono-thread'}`
+            moteur.varianteChargee
+              ? nomVariante(moteur.varianteChargee)
+              : `prévu : ${nomVariante(moteur.profil.variante)}`
           }
         />
         <Ligne cle="Threads actifs" valeur={String(moteur.profil.threads)} />
         <Ligne cle="Table de hachage" valeur={`${moteur.profil.hash} Mo`} />
         <Ligne cle="Profondeur par défaut" valeur={String(moteur.profil.profondeurParDefaut)} />
         <Ligne cle="Temps par coup (analyse)" valeur={`${moteur.profil.tempsParCoupMs} ms`} />
+        <Ligne
+          cle="Moteurs embarqués"
+          valeur={`SF ${VERSION_SF19} (~1,7 Mo) et SF ${VERSION_SF18} (~7 Mo)`}
+        />
         <Ligne cle="Nom rapporté" valeur={moteur.nomMoteur} />
         <Ligne
           cle="État"

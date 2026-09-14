@@ -7,10 +7,34 @@
  * et une profondeur plus faible.
  */
 
-export const VERSION_MOTEUR = '18.0.8';
-export const CHEMIN_MOTEUR = '/engine/sf18';
+/**
+ * Deux moteurs cohabitent, et ce n'est pas un accident.
+ *
+ * Stockfish 19 est plus fort (+44 Elo) et surtout beaucoup plus léger — son
+ * réseau NNUE n'est pas embarqué, ce qui ramène le téléchargement de 7 Mo à
+ * moins de 2 Mo. Mais son build web déclare une mémoire WebAssembly
+ * PARTAGÉE : il exige un contexte isolé et ne connaît pas de variante
+ * mono-thread. Là où `SharedArrayBuffer` manque — WebView Android, en-têtes
+ * COOP/COEP non appliqués — il ne peut tout simplement pas démarrer.
+ *
+ * Stockfish 18 Lite reste donc en place pour ce cas, avec son build
+ * mono-thread. On ne télécharge jamais les deux : l'appareil reçoit celui
+ * qu'il peut exécuter.
+ */
+export const VERSION_SF19 = '19';
+export const VERSION_SF18 = '18.0.8';
+export const CHEMIN_SF19 = '/engine/sf19';
+export const CHEMIN_SF18 = '/engine/sf18';
 
-export type VarianteMoteur = 'multithread' | 'monothread';
+/** Conservé pour la page de diagnostic : version réellement susceptible d'être chargée. */
+export const VERSION_MOTEUR = VERSION_SF18;
+export const CHEMIN_MOTEUR = CHEMIN_SF18;
+
+/**
+ * `sf19` : Stockfish 19, multi-thread, contexte isolé obligatoire.
+ * `multithread` / `monothread` : Stockfish 18 Lite, en repli.
+ */
+export type VarianteMoteur = 'sf19' | 'multithread' | 'monothread';
 
 export interface Capacites {
   /** `SharedArrayBuffer` utilisable (nécessite un contexte isolé COOP/COEP). */
@@ -138,7 +162,9 @@ export function choisirProfilMoteur(c: Capacites): ProfilMoteur {
   const appareilLimite = c.mobile || c.coeurs <= 2 || (c.memoireGo !== null && c.memoireGo <= 4);
 
   return {
-    variante: peutMultithread ? 'multithread' : 'monothread',
+    // Stockfish 19 dès que le contexte le permet : plus fort et bien plus
+    // léger à télécharger.
+    variante: peutMultithread ? 'sf19' : 'monothread',
     threads,
     hash,
     profondeurParDefaut: appareilLimite ? 14 : 18,
@@ -148,10 +174,44 @@ export function choisirProfilMoteur(c: Capacites): ProfilMoteur {
 }
 
 /** URL du script worker et du binaire WASM pour une variante donnée. */
-export function urlsMoteur(variante: VarianteMoteur): { js: string; wasm: string } {
+export function urlsMoteur(
+  variante: VarianteMoteur,
+  /**
+   * Table de hachage visée, en Mo. Stockfish 19 travaille en mémoire
+   * partagée, dont le maximum est figé à la création : l'adaptateur a besoin
+   * de connaître le hachage AVANT de créer la mémoire, sinon le premier
+   * `setoption name Hash` échoue faute de place.
+   */
+  hashMo = 16,
+  /** Nombre de threads visé : chacun réplique le réseau NNUE. */
+  threads = 1,
+): {
+  js: string;
+  wasm: string;
+  /** Un worker de module ES, ou le worker classique de Stockfish 18. */
+  typeWorker: 'module' | 'classic';
+  /** Réseau NNUE à charger séparément, quand il n'est pas embarqué. */
+  nnue?: string;
+} {
+  if (variante === 'sf19') {
+    return {
+      js: `${CHEMIN_SF19}/worker-sf19.js?hash=${hashMo}&threads=${threads}`,
+      wasm: `${CHEMIN_SF19}/sf_19_smallnet.wasm`,
+      nnue: `${CHEMIN_SF19}/nn-61e7af4bb97d.nnue`,
+      typeWorker: 'module',
+    };
+  }
   const base = variante === 'multithread' ? 'stockfish-18-lite' : 'stockfish-18-lite-single';
   return {
-    js: `${CHEMIN_MOTEUR}/${base}.js`,
-    wasm: `${CHEMIN_MOTEUR}/${base}.wasm`,
+    js: `${CHEMIN_SF18}/${base}.js`,
+    wasm: `${CHEMIN_SF18}/${base}.wasm`,
+    typeWorker: 'classic',
   };
+}
+
+/** Nom lisible d'une variante, pour le diagnostic. */
+export function nomVariante(v: VarianteMoteur): string {
+  if (v === 'sf19') return 'Stockfish 19 (multi-thread)';
+  if (v === 'multithread') return 'Stockfish 18 Lite (multi-thread)';
+  return 'Stockfish 18 Lite (mono-thread)';
 }

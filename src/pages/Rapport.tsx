@@ -157,24 +157,25 @@ export function Rapport({
     return jeu.fen();
   }, [coupActif, indexVariante, partie?.fenDepart]);
 
-  const fleches: FlecheEchiquier[] = useMemo(() => {
-    if (!coupActif || indexVariante > 0) return [];
-    const liste: FlecheEchiquier[] = [
-      {
-        depuis: coupActif.uci.slice(0, 2),
-        vers: coupActif.uci.slice(2, 4),
-        couleur: coupActif.estMeilleurCoup ? 'green' : 'red',
-      },
-    ];
-    if (!coupActif.estMeilleurCoup && coupActif.meilleurUci) {
-      liste.push({
-        depuis: coupActif.meilleurUci.slice(0, 2),
-        vers: coupActif.meilleurUci.slice(2, 4),
-        couleur: 'green',
-      });
-    }
-    return liste;
-  }, [coupActif, indexVariante]);
+  /**
+   * UNE flèche : celle du meilleur coup quand il a été manqué, sinon celle du
+   * coup joué. Montrer les deux — le coup joué en rouge, le meilleur en vert —
+   * obligeait à deviner laquelle regarder.
+   */
+  const uciFleche =
+    !coupActif || indexVariante > 0
+      ? null
+      : coupActif.estMeilleurCoup
+        ? coupActif.uci
+        : (coupActif.meilleurUci ?? coupActif.uci);
+
+  const fleche: FlecheEchiquier | null = useMemo(
+    () =>
+      uciFleche
+        ? { depuis: uciFleche.slice(0, 2), vers: uciFleche.slice(2, 4), couleur: 'green' }
+        : null,
+    [uciFleche],
+  );
 
   const allerA = useCallback((i: number) => {
     setIndex(i);
@@ -384,7 +385,7 @@ export function Rapport({
           <Echiquier
             fen={fenAffichee}
             orientation={orientation}
-            fleches={fleches}
+            fleche={fleche}
             coordonnees={reglages.coordonnees}
             animations={reglages.animations}
           />

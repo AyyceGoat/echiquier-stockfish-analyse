@@ -18,6 +18,7 @@ import {
 import {
   choisirProfilMoteur,
   detecterCapacites,
+  nomVariante,
   urlsMoteur,
   VERSION_MOTEUR,
   type Capacites,
@@ -161,8 +162,14 @@ export class Moteur {
       throw new Error(msg);
     }
 
+    // Ordre de repli : du plus capable au plus universel. Chaque échec fait
+    // passer au suivant, et le mono-thread de Stockfish 18 fonctionne partout.
     const variantes: VarianteMoteur[] =
-      this.profil.variante === 'multithread' ? ['multithread', 'monothread'] : ['monothread'];
+      this.profil.variante === 'sf19'
+        ? ['sf19', 'multithread', 'monothread']
+        : this.profil.variante === 'multithread'
+          ? ['multithread', 'monothread']
+          : ['monothread'];
 
     let derniereErreur: Error | null = null;
     for (const variante of variantes) {
@@ -170,14 +177,13 @@ export class Moteur {
         await this.chargerVariante(variante);
         this.varianteChargee = variante;
         if (variante !== this.profil.variante) {
-          // Le build multi-thread a échoué à l'exécution : on ajuste le profil
-          // pour que la page de diagnostic reflète ce qui tourne réellement.
+          // Une variante a échoué à l'exécution : on ajuste le profil pour que
+          // la page de diagnostic reflète ce qui tourne réellement.
           this.profil = {
             ...this.profil,
-            variante: 'monothread',
-            threads: 1,
-            raisonModeReduit:
-              "Le moteur multi-thread n'a pas pu démarrer : repli automatique sur le mono-thread.",
+            variante,
+            threads: variante === 'monothread' ? 1 : this.profil.threads,
+            raisonModeReduit: `Repli automatique sur ${nomVariante(variante).toLowerCase()}.`,
           };
         }
         this.emettre({ etat: 'pret' });
@@ -195,11 +201,13 @@ export class Moteur {
   }
 
   private async chargerVariante(variante: VarianteMoteur): Promise<void> {
-    const { js, wasm } = urlsMoteur(variante);
+    const { js, wasm, nnue, typeWorker } = urlsMoteur(variante, this.profil.hash, this.profil.threads);
 
-    // On télécharge le binaire nous-mêmes pour afficher une progression réelle.
-    // Le worker le relira ensuite depuis le cache HTTP / le service worker.
+    // On télécharge les binaires nous-mêmes pour afficher une progression
+    // réelle. Le worker les relira ensuite depuis le cache HTTP / le service
+    // worker, sans second téléchargement.
     await this.prechargerWasm(wasm);
+    if (nnue) await this.prechargerWasm(nnue);
 
     this.emettre({ etat: 'demarrage', message: 'Initialisation du moteur…' });
 
@@ -207,7 +215,7 @@ export class Moteur {
     // seul le chemin du .wasm depuis celui du .js, et un fragment rendrait
     // l'URL incachable par le service worker (l'API Cache indexe fragment
     // compris, or emscripten en ajoute un différent par thread).
-    const worker = new Worker(js);
+    const worker = new Worker(js, typeWorker === 'module' ? { type: 'module' } : undefined);
     this.worker = worker;
 
     worker.onmessage = (ev: MessageEvent) => this.surMessage(ev);
@@ -222,7 +230,7 @@ export class Moteur {
     await this.attendre('uciok', () => worker.postMessage('uci'), DELAI_DEMARRAGE_MS);
 
     worker.postMessage(`setoption name Hash value ${this.profil.hash}`);
-    if (variante === 'multithread') {
+    if (variante === 'multithread' || variante === 'sf19') {
       worker.postMessage(`setoption name Threads value ${this.profil.threads}`);
     }
     worker.postMessage('setoption name UCI_ShowWDL value true');
@@ -244,7 +252,7 @@ export class Moteur {
    * limité ou en 3G, on renonce plutôt que d'imposer 7 Mo silencieux.
    */
   private async preparerReplinHorsLigne(): Promise<void> {
-    if (this.varianteChargee !== 'multithread') return;
+    if (this.varianteChargee === 'monothread') return;
     if (this.capacites.reseauLent) return;
     if (typeof caches === 'undefined') return;
 
@@ -360,7 +368,7 @@ export class Moteur {
     this.detruireWorker();
     this.promesseDemarrage = null;
 
-    if (this.varianteChargee === 'multithread' && !this.replinTente) {
+    if (this.varianteChargee !== 'monothread' && this.varianteChargee !== null && !this.replinTente) {
       this.replinTente = true;
       this.varianteChargee = null;
       this.profil = {

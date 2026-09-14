@@ -339,33 +339,27 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
       verdict.classement === 'erreur' ||
       verdict.classement === 'gaffe');
 
-  // La flèche du meilleur coup n'est montrée que si le coup joué était mauvais
-  // et que l'échiquier affiche bien la position d'où il a été joué.
-  //
-  // Le tableau est mémoïsé : sans cela il change d'identité à chaque rendu,
-  // or l'analyse continue en provoque plusieurs par seconde, et Chessground
-  // reconfigurerait tout l'échiquier en boucle.
-  //
-  // Ce calcul reste AVANT la sortie anticipée sur l'écran de configuration :
-  // un hook placé après elle ne serait pas appelé au même rang d'un rendu à
-  // l'autre, ce que React refuse.
-  const fleches: FlecheEchiquier[] = useMemo(() => {
-    if (!verdictVisible || !mauvaisCoup || !verdict?.meilleurUci || !partie.surLeDernierCoup) {
-      return [];
-    }
-    return [
-      {
-        depuis: verdict.meilleurUci.slice(0, 2),
-        vers: verdict.meilleurUci.slice(2, 4),
-        couleur: 'green',
-      },
-      {
-        depuis: verdict.coupJoue.slice(0, 2),
-        vers: verdict.coupJoue.slice(2, 4),
-        couleur: 'red',
-      },
-    ];
-  }, [verdictVisible, mauvaisCoup, verdict, partie.surLeDernierCoup]);
+  /**
+   * UNE flèche : le meilleur coup, et seulement quand le coup joué était
+   * perfectible. Le coup réellement joué n'a pas besoin de flèche — il est
+   * déjà surligné par Chessground comme dernier coup, et une deuxième flèche
+   * rendrait l'échiquier illisible.
+   *
+   * Mémoïsée sur les caractères du coup : l'analyse en direct provoque
+   * plusieurs rendus par seconde, la flèche ne doit pas clignoter.
+   */
+  const uciFleche =
+    verdictVisible && mauvaisCoup && verdict?.meilleurUci && partie.surLeDernierCoup
+      ? verdict.meilleurUci
+      : null;
+
+  const fleche: FlecheEchiquier | null = useMemo(
+    () =>
+      uciFleche
+        ? { depuis: uciFleche.slice(0, 2), vers: uciFleche.slice(2, 4), couleur: 'green' }
+        : null,
+    [uciFleche],
+  );
 
   if (!configuree) {
     return (
@@ -459,7 +453,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
                 trait={partie.traitAffiche === 'w' ? 'white' : 'black'}
                 dernierCoup={partie.dernierCoup}
                 echec={partie.echec}
-                fleches={fleches}
+                fleche={fleche}
                 coordonnees={reglages.coordonnees}
                 animations={reglages.animations}
                 onCoup={(d, v) => surCoup(d, v)}

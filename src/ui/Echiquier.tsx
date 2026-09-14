@@ -35,7 +35,15 @@ export interface ProprietesEchiquier {
   dernierCoup?: [string, string] | null;
   /** Camp en échec, s'il y en a un : Chessground surligne son roi lui-même. */
   echec?: 'white' | 'black' | null;
-  fleches?: FlecheEchiquier[];
+  /**
+   * UNE flèche au plus, jamais davantage.
+   *
+   * La propriété est volontairement au singulier : plusieurs flèches
+   * simultanées rendent l'échiquier illisible, on ne sait plus laquelle
+   * regarder. Passer par un tableau laisserait la porte ouverte à la
+   * régression ; ici la règle tient par construction.
+   */
+  fleche?: FlecheEchiquier | null;
   /** Cases à surligner (analyse, correction). */
   surlignages?: { case: string; classe: string }[];
   coordonnees?: boolean;
@@ -55,7 +63,7 @@ export function Echiquier({
   trait,
   dernierCoup,
   echec,
-  fleches,
+  fleche,
   surlignages,
   coordonnees = true,
   animations = true,
@@ -76,12 +84,20 @@ export function Echiquier({
 
   const formes: DrawShape[] = useMemo(
     () =>
-      (fleches ?? []).map((f) => ({
-        orig: f.depuis as Key,
-        dest: f.vers as Key,
-        brush: f.couleur ?? 'green',
-      })),
-    [fleches],
+      fleche
+        ? [
+            {
+              orig: fleche.depuis as Key,
+              dest: fleche.vers as Key,
+              brush: fleche.couleur ?? 'green',
+            },
+          ]
+        : [],
+    // Les champs sont listés un par un : l'objet change d'identité à chaque
+    // rendu du parent, alors que la flèche ne bouge pas. Sans cela,
+    // Chessground redessinerait la flèche plusieurs fois par seconde pendant
+    // une analyse, ce qui la fait clignoter.
+    [fleche?.depuis, fleche?.vers, fleche?.couleur],
   );
 
   const dests = useMemo(() => {

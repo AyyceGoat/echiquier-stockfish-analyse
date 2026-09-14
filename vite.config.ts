@@ -47,11 +47,11 @@ export default defineConfig({
         runtimeCaching: [
           {
             // URL versionnee => contenu immuable => CacheFirst sans risque de WASM perime.
-            urlPattern: /\/engine\/sf18\/.*\.(?:js|wasm)$/,
+            urlPattern: /\/engine\/sf(?:18|19)\/.*\.(?:js|wasm|nnue)$/,
             handler: 'CacheFirst',
             options: {
-              cacheName: 'moteur-stockfish-18.0.8',
-              expiration: { maxEntries: 6, maxAgeSeconds: 60 * 60 * 24 * 180 },
+              cacheName: 'moteur-stockfish-19-et-18.0.8',
+              expiration: { maxEntries: 10, maxAgeSeconds: 60 * 60 * 24 * 180 },
               cacheableResponse: { statuses: [0, 200] },
               rangeRequests: true,
             },

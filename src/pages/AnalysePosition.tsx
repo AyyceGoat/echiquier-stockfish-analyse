@@ -6,7 +6,7 @@
  * peut basculer en partie libre ou en jeu assisté pour continuer à jouer.
  */
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Chess } from 'chess.js';
 import { useReglages } from '../contexte.tsx';
 import { useAnalyseContinue, useEtatMoteur } from '../hooks/useMoteur.ts';
@@ -17,11 +17,13 @@ import { FEN_INITIALE, validateFenLegality } from '../lib/fen.ts';
 import { trouverOuverture } from '../lib/ouvertures.ts';
 import { deposerPosition } from '../lib/positionPartagee.ts';
 import { formaterEvaluation } from '../lib/uci.ts';
+import { qualifierCoup } from '../lib/qualiteCoup.ts';
 import type { ResultatReconnaissance } from '../recognition/index.ts';
 import { Echiquier, type FlecheEchiquier } from '../ui/Echiquier.tsx';
 import { DialoguePromotion } from '../ui/DialoguePromotion.tsx';
 import { EcranCorrection } from '../ui/EcranCorrection.tsx';
 import { ImportImage } from '../ui/ImportImage.tsx';
+import { LibelleMeilleurCoup } from '../ui/LibelleMeilleurCoup.tsx';
 import { ListeCoups } from '../ui/ListeCoups.tsx';
 import {
   AffichageEval,
@@ -52,6 +54,9 @@ export function AnalysePosition({ naviguer }: { naviguer: (v: string) => void })
     apercu: string;
   } | null>(null);
   const [promotionEnAttente, setPromotion] = useState<{ depuis: string; vers: string } | null>(null);
+  /** Index MultiPV dont la fleche est affichee : 0 = le meilleur coup. */
+  const [ligneAffichee, setLigneAffichee] = useState(0);
+  const [alternativesOuvertes, setAlternativesOuvertes] = useState(false);
 
   const zoneEchiquier = useRef<HTMLDivElement>(null);
 
@@ -133,15 +138,45 @@ export function AnalysePosition({ naviguer }: { naviguer: (v: string) => void })
 
   const ouverture = useMemo(() => trouverOuverture(partie.coupsSan), [partie.coupsSan]);
 
-  const fleches: FlecheEchiquier[] = useMemo(
+  /**
+   * Ligne dont la fleche est montree. Par defaut le meilleur coup ;
+   * l'utilisateur peut lui substituer une alternative, qui la REMPLACE.
+   */
+  const ligneMontree = analyse.lignes[ligneAffichee] ?? analyse.lignes[0];
+  const coupMontre = ligneMontree?.pv[0] ?? null;
+
+  // La fleche ne depend que des quatre caracteres du coup : tant que le
+  // meilleur coup ne change pas, l'objet reste identique et Chessground ne
+  // redessine rien, meme si la profondeur progresse dix fois par seconde.
+  const fleche: FlecheEchiquier | null = useMemo(
     () =>
-      analyse.lignes.slice(0, Math.min(3, reglages.multiPV)).map((l, i) => ({
-        depuis: l.pv[0]?.slice(0, 2) ?? 'a1',
-        vers: l.pv[0]?.slice(2, 4) ?? 'a1',
-        couleur: i === 0 ? ('green' as const) : i === 1 ? ('blue' as const) : ('yellow' as const),
-      })),
-    [analyse.lignes, reglages.multiPV],
+      coupMontre
+        ? { depuis: coupMontre.slice(0, 2), vers: coupMontre.slice(2, 4), couleur: 'green' }
+        : null,
+    [coupMontre],
   );
+
+  const qualite = useMemo(() => {
+    if (!coupMontre || !ligneMontree) return 'meilleur' as const;
+    return qualifierCoup({
+      fen: partie.fen,
+      uci: coupMontre,
+      pv: ligneMontree.pv,
+      evaluation: ligneMontree.evaluation,
+      evaluationSeconde: analyse.lignes[1]?.evaluation,
+    });
+  }, [coupMontre, ligneMontree, partie.fen, analyse.lignes]);
+
+  const sanMontre = useMemo(
+    () => (coupMontre ? (variantEnSan(partie.fen, [coupMontre], 1)[0] ?? null) : null),
+    [coupMontre, partie.fen],
+  );
+
+  // On revient au meilleur coup des que la position change : une alternative
+  // choisie sur la position precedente n'a plus de sens ici.
+  useEffect(() => {
+    setLigneAffichee(0);
+  }, [partie.fen]);
 
   // --- Écran de correction après reconnaissance ---
   if (aCorriger) {
@@ -274,7 +309,7 @@ export function AnalysePosition({ naviguer }: { naviguer: (v: string) => void })
                 trait={partie.traitAffiche === 'w' ? 'white' : 'black'}
                 dernierCoup={partie.dernierCoup}
                 echec={partie.echec}
-                fleches={analyseActive ? fleches : []}
+                fleche={analyseActive ? fleche : null}
                 coordonnees={reglages.coordonnees}
                 animations={reglages.animations}
                 onCoup={(d, v) => surCoup(d, v)}
@@ -285,6 +320,17 @@ export function AnalysePosition({ naviguer }: { naviguer: (v: string) => void })
               <BarreEval cpBlancs={cpBlancs} orientation={partie.orientation} />
             </div>
           </div>
+
+          {analyseActive ? (
+            <LibelleMeilleurCoup
+              san={sanMontre}
+              evaluation={ligneMontree?.evaluation}
+              qualite={qualite}
+              profondeur={analyse.profondeur}
+              estUneAlternative={ligneAffichee !== 0}
+              onRevenirAuMeilleur={() => setLigneAffichee(0)}
+            />
+          ) : null}
 
           <div className="mx-auto mt-3 flex max-w-md items-center justify-between gap-2">
             <Bouton onClick={partie.debut} ariaLabel="Première position">
@@ -328,36 +374,57 @@ export function AnalysePosition({ naviguer }: { naviguer: (v: string) => void })
             ) : analyse.lignes.length === 0 ? (
               <p className="mt-2 text-sm text-[var(--color-texte-doux)]">Recherche en cours…</p>
             ) : (
-              <ol className="mt-3 space-y-2">
-                {analyse.lignes.map((l) => {
-                  const san = variantEnSan(partie.fen, l.pv, 8);
-                  return (
-                    <li key={l.multipv}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const premier = l.pv[0];
-                          if (premier) {
-                            surCoup(
-                              premier.slice(0, 2),
-                              premier.slice(2, 4),
-                              (premier[4] as Promotion) ?? undefined,
-                            );
-                          }
-                        }}
-                        className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-[var(--color-fond-3)]"
-                      >
-                        <span className="font-mono text-sm font-semibold text-[var(--color-accent)]">
-                          {formaterEvaluation(l.evaluation)}
-                        </span>
-                        <span className="ml-2 font-mono text-xs text-[var(--color-texte-doux)]">
-                          {san.join(' ')}
-                        </span>
-                      </button>
-                    </li>
-                  );
-                })}
-              </ol>
+              <>
+                <p className="mt-2 text-sm">
+                  <span className="font-mono font-semibold">{sanMontre}</span>{' '}
+                  <span className="text-[var(--color-texte-doux)]">
+                    {variantEnSan(partie.fen, ligneMontree?.pv ?? [], 6).slice(1).join(' ')}
+                  </span>
+                </p>
+
+                {/* Les alternatives restent du TEXTE, repliees par defaut :
+                    elles ne dessinent jamais de fleche tant qu'on ne les
+                    choisit pas explicitement, et la fleche choisie remplace
+                    la principale au lieu de s'y ajouter. */}
+                {analyse.lignes.length > 1 ? (
+                  <div className="mt-3 border-t border-[var(--color-bordure)] pt-3">
+                    <button
+                      type="button"
+                      onClick={() => setAlternativesOuvertes((o) => !o)}
+                      aria-expanded={alternativesOuvertes}
+                      className="cible-tactile w-full text-left text-sm text-[var(--color-accent)]"
+                    >
+                      {alternativesOuvertes ? 'Masquer les alternatives' : 'Voir les alternatives'}
+                    </button>
+
+                    {alternativesOuvertes ? (
+                      <ol className="mt-2 space-y-1.5">
+                        {analyse.lignes.map((l, i) => (
+                          <li key={l.multipv}>
+                            <button
+                              type="button"
+                              onClick={() => setLigneAffichee(i)}
+                              aria-pressed={ligneAffichee === i}
+                              className={`w-full rounded-lg px-2 py-1.5 text-left ${
+                                ligneAffichee === i
+                                  ? 'bg-[var(--color-fond-3)]'
+                                  : 'hover:bg-[var(--color-fond-3)]'
+                              }`}
+                            >
+                              <span className="font-mono text-sm font-semibold text-[var(--color-accent)]">
+                                {formaterEvaluation(l.evaluation)}
+                              </span>
+                              <span className="ml-2 font-mono text-xs text-[var(--color-texte-doux)]">
+                                {variantEnSan(partie.fen, l.pv, 6).join(' ')}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ol>
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
             )}
           </Carte>
 

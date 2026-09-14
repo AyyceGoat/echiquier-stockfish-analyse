@@ -55,13 +55,13 @@
 # C'est ce qui garantit qu'une mise à jour de Stockfish ne peut pas être
 # servie depuis un cache contenant l'ancien WASM.
 [[headers]]
-  for = "/engine/sf18/*"
+  for = "/engine/*"
   [headers.values]
     Cache-Control = "public, max-age=31536000, immutable"
     Cross-Origin-Resource-Policy = "same-origin"
 
 [[headers]]
-  for = "/engine/sf18/*.wasm"
+  for = "/engine/*.wasm"
   [headers.values]
     Content-Type = "application/wasm"
     Cache-Control = "public, max-age=31536000, immutable"
