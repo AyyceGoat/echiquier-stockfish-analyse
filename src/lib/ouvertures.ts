@@ -127,21 +127,32 @@ export const OUVERTURES: Ouverture[] = [
   { eco: 'E97', nom: 'Est-indienne, attaque Mar del Plata', coups: 'd4 Nf6 c4 g6 Nc3 Bg7 e4 d6 Nf3 O-O Be2 e5 O-O Nc6 d5 Ne7' },
 ];
 
-/** Index construit une seule fois : préfixe de coups SAN -> ouverture. */
+/** Index construit une seule fois : suite exacte de coups SAN -> ouverture. */
 let index: Map<string, Ouverture> | null = null;
+/** Toutes les suites qui sont un début de ligne connue. */
+let prefixes: Set<string> | null = null;
 
-function obtenirIndex(): Map<string, Ouverture> {
-  if (index) return index;
+function construireIndex(): void {
+  if (index && prefixes) return;
   index = new Map();
+  prefixes = new Set();
   for (const o of OUVERTURES) {
-    // On indexe chaque préfixe : une ligne longue nomme aussi ses positions
-    // intermédiaires, et le nom le plus précis gagne (ligne la plus longue).
     const coups = o.coups.split(' ');
     const cle = coups.join(' ');
     const existante = index.get(cle);
     if (!existante || existante.coups.length < o.coups.length) index.set(cle, o);
+    // Chaque début de ligne est mémorisé : c'est ce qui permet de dire si
+    // un coup précis prolonge encore la théorie, sans confondre avec le fait
+    // qu'une position ANTÉRIEURE était théorique.
+    for (let i = 1; i <= coups.length; i++) {
+      prefixes.add(coups.slice(0, i).join(' '));
+    }
   }
-  return index;
+}
+
+function obtenirIndex(): Map<string, Ouverture> {
+  construireIndex();
+  return index as Map<string, Ouverture>;
 }
 
 /**
@@ -161,9 +172,16 @@ export function trouverOuverture(coupsSan: string[]): Ouverture | null {
 }
 
 /**
- * Le coup joué au demi-coup `n` prolonge-t-il une ligne connue ?
- * Sert à ne pas reprocher une imprécision sur un coup de théorie.
+ * Le coup joué prolonge-t-il encore une ligne connue ?
+ *
+ * On exige que la suite complète, coup inclus, soit le début d'une ligne du
+ * répertoire. Se contenter de chercher la plus longue ouverture connue
+ * marquerait « théorie » tout coup joué après une ouverture identifiée, même
+ * s'il sort du livre — ce qui reviendrait à excuser n'importe quelle
+ * imprécision de la 5e à la 20e demi-coup.
  */
 export function estCoupDeTheorie(coupsSanJusquAuCoupInclus: string[]): boolean {
-  return trouverOuverture(coupsSanJusquAuCoupInclus) !== null;
+  if (coupsSanJusquAuCoupInclus.length === 0) return false;
+  construireIndex();
+  return (prefixes as Set<string>).has(coupsSanJusquAuCoupInclus.join(' '));
 }

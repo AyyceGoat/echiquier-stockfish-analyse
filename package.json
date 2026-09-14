@@ -12,7 +12,8 @@
     "typecheck": "tsc -b --noEmit",
     "icones": "node scripts/generer-icones.mjs",
     "test:navigateur": "node scripts/test-navigateur.mjs",
-    "preview:sans-isolation": "node scripts/serveur-sans-isolation.mjs"
+    "preview:sans-isolation": "node scripts/serveur-sans-isolation.mjs",
+    "gabarits": "node scripts/extraire-gabarits.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",

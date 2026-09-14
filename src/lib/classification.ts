@@ -69,6 +69,24 @@ export interface ResultatClassification {
   pertePdg: number;
 }
 
+/**
+ * Met en forme la perte d'un coup, ou renvoie `null` si l'afficher
+ * n'apprendrait rien.
+ *
+ * Dès qu'un mat entre dans le calcul, la perte atteint des milliers de
+ * centipions et « −100,12 pion » ne veut plus rien dire pour un joueur.
+ * Dans ce cas, c'est l'explication en français qui porte l'information.
+ */
+export function formaterPerte(
+  perteCp: number,
+  avant: Evaluation,
+  apres: Evaluation,
+): string | null {
+  if (avant.type === 'mat' || apres.type === 'mat') return null;
+  if (perteCp < 20) return null;
+  return `−${(perteCp / 100).toFixed(2).replace('.', ',')}`;
+}
+
 /** Libellé français affichable pour chaque classement. */
 export const LIBELLES: Record<Classement, string> = {
   theorie: 'Coup de théorie',

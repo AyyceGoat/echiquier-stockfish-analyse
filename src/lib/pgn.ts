@@ -6,7 +6,7 @@
  * ce que l'export standard ne permet pas.
  */
 
-import { SYMBOLES, type Classement } from './classification.ts';
+import { formaterPerte, SYMBOLES, type Classement } from './classification.ts';
 import { formaterEvaluation, type Evaluation } from './uci.ts';
 
 export interface CoupAnnote {
@@ -16,6 +16,8 @@ export interface CoupAnnote {
   classement: Classement;
   perteCp: number;
   evaluation: Evaluation;
+  /** Évaluation après le coup, pour savoir si un mat entre en jeu. */
+  evaluationApres?: Evaluation;
   /** Meilleur coup manqué, en SAN. */
   meilleurSan?: string | null;
   /** Variante recommandée, en SAN. */
@@ -79,8 +81,11 @@ export function construirePgnAnnote(
     const commentaires: string[] = [];
     commentaires.push(`[%eval ${cleEval(c.evaluation)}] ${formaterEvaluation(c.evaluation)}`);
     if (c.explication) commentaires.push(nettoyerCommentaire(c.explication));
-    if (c.perteCp >= 50 && c.meilleurSan) {
-      commentaires.push(`Perte : ${(c.perteCp / 100).toFixed(2).replace('.', ',')} pion(s).`);
+    const perte = c.evaluationApres
+      ? formaterPerte(c.perteCp, c.evaluation, c.evaluationApres)
+      : null;
+    if (perte && c.perteCp >= 50 && c.meilleurSan) {
+      commentaires.push(`Perte : ${perte.replace('−', '')} pion(s).`);
     }
     morceaux.push(`{ ${commentaires.join(' ')} }`);
 

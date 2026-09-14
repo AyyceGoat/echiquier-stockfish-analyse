@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   classerCoup,
+  formaterPerte,
   momentsCharnieres,
   pdgBlancs,
   precisionCoup,
@@ -190,5 +191,30 @@ describe('momentsCharnieres', () => {
 
   it('gère une liste vide', () => {
     expect(momentsCharnieres([], 3)).toEqual([]);
+  });
+});
+
+describe('formaterPerte', () => {
+  it('met en forme une perte ordinaire', () => {
+    expect(
+      formaterPerte(150, { type: 'cp', valeur: 50 }, { type: 'cp', valeur: -100 }),
+    ).toBe('−1,50');
+  });
+
+  it('tait une perte négligeable', () => {
+    expect(
+      formaterPerte(5, { type: 'cp', valeur: 10 }, { type: 'cp', valeur: 5 }),
+    ).toBeNull();
+  });
+
+  it('tait la perte dès qu’un mat entre en jeu', () => {
+    // Sans cela, un mat concédé s'affichait « −100,12 pion », ce qui n'a
+    // aucun sens : c'est l'explication en français qui porte l'information.
+    expect(
+      formaterPerte(10012, { type: 'cp', valeur: 100 }, { type: 'mat', valeur: -1 }),
+    ).toBeNull();
+    expect(
+      formaterPerte(9700, { type: 'mat', valeur: 2 }, { type: 'cp', valeur: 300 }),
+    ).toBeNull();
   });
 });

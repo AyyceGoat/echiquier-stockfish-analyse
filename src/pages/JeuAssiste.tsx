@@ -12,13 +12,19 @@
  * l'analyse continue du panneau latéral, qui court à une profondeur variable.
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useReglages } from '../contexte.tsx';
 import { enregistrerPartie, nouvelIdentifiant } from '../db/parties.ts';
 import { useAnalyseContinue, useCoupDuMoteur, useEtatMoteur, useMoteur } from '../hooks/useMoteur.ts';
 import { useBalayage, useRaccourcisClavier } from '../hooks/useRaccourcis.ts';
 import { usePartie, type Promotion } from '../hooks/usePartie.ts';
-import { classerCoup, LIBELLES, COULEURS, type Classement } from '../lib/classification.ts';
+import {
+  classerCoup,
+  formaterPerte,
+  LIBELLES,
+  COULEURS,
+  type Classement,
+} from '../lib/classification.ts';
 import { expliquerCoup, uciVersSan, variantEnSan } from '../lib/explications.ts';
 import { FEN_INITIALE } from '../lib/fen.ts';
 import { recupererPosition } from '../lib/positionPartagee.ts';
@@ -41,6 +47,8 @@ import { Chess } from 'chess.js';
 interface Verdict {
   classement: Classement;
   perteCp: number;
+  /** Perte déjà mise en forme, ou null si l'afficher n'apprendrait rien. */
+  perteAffichee: string | null;
   coupJoue: string;
   meilleurUci: string | null;
   meilleurSan: string | null;
@@ -76,6 +84,18 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
 
   const { jouerCoup, fin, trait, fenCourante } = partie;
   const monTour = configuree && !fin && trait === monCamp;
+
+  // Un verdict qui signale un coup perfectible laisse la main au joueur :
+  // tant qu'il n'a pas choisi entre reprendre et garder, la partie est en pause.
+  const verdictOffreReprise =
+    verdict !== null &&
+    (verdict.classement === 'imprecision' ||
+      verdict.classement === 'erreur' ||
+      verdict.classement === 'gaffe') &&
+    (reglages.niveauAssistance === 'chaque-coup' ||
+      verdict.classement === 'erreur' ||
+      verdict.classement === 'gaffe');
+  const attendDecision = verdictOffreReprise && !fin;
 
   // Analyse continue du panneau latéral : uniquement quand c'est à moi de
   // jouer, et jamais pendant qu'un verdict est en cours de calcul (deux
@@ -150,6 +170,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
         setVerdict({
           classement,
           perteCp,
+          perteAffichee: formaterPerte(perteCp, avant, apres),
           coupJoue: coupUci,
           meilleurUci,
           meilleurSan: meilleurUci ? uciVersSan(fenAvant, meilleurUci) : null,
@@ -198,10 +219,15 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
     [calculerVerdict, jouerCoup, monCamp, partie],
   );
 
-  // --- Coup du moteur : attend que le verdict soit rendu ---
+  // --- Coup du moteur ---
+  // Il attend que le verdict soit rendu, puis, si ce verdict propose une
+  // reprise, que le joueur ait tranché. Sans cette attente, Stockfish
+  // répondait pendant la lecture du commentaire et « Reprendre » annulait
+  // son coup à lui au lieu du coup fautif.
   useEffect(() => {
     if (!configuree || fin || trait === monCamp) return;
     if (verdictEnCours || verdictEnAttente.current) return;
+    if (attendDecision) return;
 
     let annule = false;
     setReflechit(true);
@@ -230,6 +256,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
     monCamp,
     fenCourante,
     verdictEnCours,
+    attendDecision,
     reglages.niveauMoteur,
     demander,
     jouerCoup,
@@ -254,9 +281,14 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
   }, [fin, enregistree, partie.coups.length, partie.fenDepart, partie.coupsSan, idPartie, monCamp, reglages.niveauMoteur]);
 
   const reprendreLeCoup = useCallback(() => {
+    // Si le moteur a malgré tout déjà répondu, on remonte jusqu'à rendre
+    // la main au joueur : reprendre doit toujours effacer le coup fautif.
+    if (partie.coups.length > 0 && partie.coups[partie.coups.length - 1].couleur !== monCamp) {
+      partie.annulerDernierCoup();
+    }
     partie.annulerDernierCoup();
     setVerdict(null);
-  }, [partie]);
+  }, [monCamp, partie]);
 
   const demarrer = useCallback(
     (camp: 'w' | 'b') => {
@@ -287,6 +319,47 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
     { versLaGauche: partie.suivant, versLaDroite: partie.precedent },
     configuree,
   );
+
+  // Affichage du verdict selon le niveau d'assistance choisi.
+  const verdictVisible =
+    verdict !== null &&
+    (reglages.niveauAssistance === 'chaque-coup' ||
+      verdict.classement === 'erreur' ||
+      verdict.classement === 'gaffe');
+
+  const mauvaisCoup =
+    verdict !== null &&
+    (verdict.classement === 'imprecision' ||
+      verdict.classement === 'erreur' ||
+      verdict.classement === 'gaffe');
+
+  // La flèche du meilleur coup n'est montrée que si le coup joué était mauvais
+  // et que l'échiquier affiche bien la position d'où il a été joué.
+  //
+  // Le tableau est mémoïsé : sans cela il change d'identité à chaque rendu,
+  // or l'analyse continue en provoque plusieurs par seconde, et Chessground
+  // reconfigurerait tout l'échiquier en boucle.
+  //
+  // Ce calcul reste AVANT la sortie anticipée sur l'écran de configuration :
+  // un hook placé après elle ne serait pas appelé au même rang d'un rendu à
+  // l'autre, ce que React refuse.
+  const fleches: FlecheEchiquier[] = useMemo(() => {
+    if (!verdictVisible || !mauvaisCoup || !verdict?.meilleurUci || !partie.surLeDernierCoup) {
+      return [];
+    }
+    return [
+      {
+        depuis: verdict.meilleurUci.slice(0, 2),
+        vers: verdict.meilleurUci.slice(2, 4),
+        couleur: 'green',
+      },
+      {
+        depuis: verdict.coupJoue.slice(0, 2),
+        vers: verdict.coupJoue.slice(2, 4),
+        couleur: 'red',
+      },
+    ];
+  }, [verdictVisible, mauvaisCoup, verdict, partie.surLeDernierCoup]);
 
   if (!configuree) {
     return (
@@ -346,37 +419,6 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
       </div>
     );
   }
-
-  // Affichage du verdict selon le niveau d'assistance choisi.
-  const verdictVisible =
-    verdict !== null &&
-    (reglages.niveauAssistance === 'chaque-coup' ||
-      verdict.classement === 'erreur' ||
-      verdict.classement === 'gaffe');
-
-  const mauvaisCoup =
-    verdict !== null &&
-    (verdict.classement === 'imprecision' ||
-      verdict.classement === 'erreur' ||
-      verdict.classement === 'gaffe');
-
-  // La flèche du meilleur coup n'est montrée que si le coup joué était mauvais
-  // et que l'échiquier affiche bien la position d'où il a été joué.
-  const fleches: FlecheEchiquier[] =
-    verdictVisible && mauvaisCoup && verdict?.meilleurUci && partie.surLeDernierCoup
-      ? [
-          {
-            depuis: verdict.meilleurUci.slice(0, 2),
-            vers: verdict.meilleurUci.slice(2, 4),
-            couleur: 'green',
-          },
-          {
-            depuis: verdict.coupJoue.slice(0, 2),
-            vers: verdict.coupJoue.slice(2, 4),
-            couleur: 'red',
-          },
-        ]
-      : [];
 
   const cpBlancs =
     evaluation === null
@@ -464,9 +506,9 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
               <p className={`text-lg font-semibold ${COULEURS[verdict.classement]}`}>
                 {LIBELLES[verdict.classement]}
               </p>
-              {verdict.perteCp >= 20 ? (
+              {verdict.perteAffichee ? (
                 <p className="mt-0.5 text-xs text-[var(--color-texte-doux)]">
-                  Perte : {(verdict.perteCp / 100).toFixed(2).replace('.', ',')} pion(s)
+                  Perte : {verdict.perteAffichee.replace('−', '')} pion(s)
                 </p>
               ) : null}
 
@@ -487,12 +529,19 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
               ) : null}
 
               {partie.surLeDernierCoup && !fin ? (
-                <div className="mt-3 grid grid-cols-2 gap-2">
-                  <Bouton onClick={reprendreLeCoup}>Reprendre</Bouton>
-                  <Bouton variante="principal" onClick={() => setVerdict(null)}>
-                    Garder
-                  </Bouton>
-                </div>
+                <>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <Bouton onClick={reprendreLeCoup}>Reprendre</Bouton>
+                    <Bouton variante="principal" onClick={() => setVerdict(null)}>
+                      Garder
+                    </Bouton>
+                  </div>
+                  {attendDecision ? (
+                    <p className="mt-2 text-center text-xs text-[var(--color-texte-doux)]">
+                      Stockfish attend votre décision avant de répondre.
+                    </p>
+                  ) : null}
+                </>
               ) : null}
             </Carte>
           ) : null}

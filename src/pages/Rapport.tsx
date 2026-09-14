@@ -13,7 +13,7 @@ import { analyserPartie, type CoupAnalyse, type RapportAnalyse } from '../analys
 import { attacherRapport, lirePartie, type PartieEnregistree } from '../db/parties.ts';
 import { useEtatMoteur, useMoteur } from '../hooks/useMoteur.ts';
 import { useBalayage, useRaccourcisClavier } from '../hooks/useRaccourcis.ts';
-import { COULEURS, LIBELLES, type Classement } from '../lib/classification.ts';
+import { COULEURS, formaterPerte, LIBELLES, type Classement } from '../lib/classification.ts';
 import { construirePgnAnnote, telechargerTexte } from '../lib/pgn.ts';
 import { formaterEvaluation } from '../lib/uci.ts';
 import { Echiquier, type FlecheEchiquier } from '../ui/Echiquier.tsx';
@@ -203,6 +203,7 @@ export function Rapport({
         classement: c.classement,
         perteCp: c.perteCp,
         evaluation: c.avant,
+        evaluationApres: c.apres,
         meilleurSan: c.meilleurSan,
         varianteSan: c.varianteSan,
         explication: c.explication,
@@ -420,11 +421,10 @@ export function Rapport({
                   {LIBELLES[coupActif.classement]}
                 </span>
                 <Etiquette>{formaterEvaluation(coupActif.apres)}</Etiquette>
-                {coupActif.perteCp >= 20 ? (
-                  <Etiquette ton="alerte">
-                    −{(coupActif.perteCp / 100).toFixed(2).replace('.', ',')}
-                  </Etiquette>
-                ) : null}
+                {(() => {
+                  const perte = formaterPerte(coupActif.perteCp, coupActif.avant, coupActif.apres);
+                  return perte ? <Etiquette ton="alerte">{perte}</Etiquette> : null;
+                })()}
               </div>
 
               <p className="mt-2 text-sm">{coupActif.explication}</p>
