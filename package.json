@@ -15,10 +15,11 @@
     "preview:sans-isolation": "node scripts/serveur-sans-isolation.mjs",
     "gabarits": "node scripts/extraire-gabarits.mjs",
     "test:hors-ligne": "node scripts/test-hors-ligne.mjs",
-    "test:tout": "vitest run && node scripts/test-navigateur.mjs && node scripts/test-interactions.mjs && node scripts/test-assiste.mjs && node scripts/test-rapport.mjs && node scripts/test-hors-ligne.mjs",
+    "test:tout": "vitest run && node scripts/test-navigateur.mjs && node scripts/test-interactions.mjs && node scripts/test-assiste.mjs && node scripts/test-rapport.mjs && node scripts/test-hors-ligne.mjs && node scripts/test-niveaux.mjs",
     "test:interactions": "node scripts/test-interactions.mjs",
     "test:reconnaissance": "node scripts/test-reconnaissance-llm.mjs",
-    "deploy": "vite build && netlify deploy --prod --dir dist --functions netlify/functions --no-build"
+    "deploy": "vite build && netlify deploy --prod --dir dist --functions netlify/functions --no-build",
+    "test:niveaux": "node scripts/test-niveaux.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",

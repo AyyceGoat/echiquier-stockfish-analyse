@@ -25,8 +25,8 @@ export interface PartieEnregistree {
   finPar: string;
   fenDepart: string;
   coupsSan: string[];
-  /** Niveau de Stockfish utilisé, si l'adversaire était le moteur. */
-  niveauMoteur?: number;
+  /** Palier de Stockfish utilisé, si l'adversaire était le moteur. */
+  niveauMoteur?: string;
   rapport?: RapportAnalyse;
 }
 

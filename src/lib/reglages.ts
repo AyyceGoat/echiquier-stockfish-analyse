@@ -12,14 +12,15 @@
  */
 
 import { SEUILS_PAR_DEFAUT, type SeuilsClassification } from './classification.ts';
+import { NIVEAU_PAR_DEFAUT, niveauDepuisAncienneValeur } from './niveaux.ts';
 
 export type NiveauAssistance = 'chaque-coup' | 'erreurs-graves';
 export type Theme = 'sombre' | 'clair' | 'systeme';
 
 export interface Reglages {
   theme: Theme;
-  /** Force de Stockfish en partie libre, 0–20. */
-  niveauMoteur: number;
+  /** Identifiant du palier de force du moteur. */
+  niveauMoteur: string;
   /** Profondeur d'analyse demandée, ou `null` pour suivre le profil appareil. */
   profondeurAnalyse: number | null;
   /** Temps par coup en analyse complète (ms), ou `null` pour le profil appareil. */
@@ -42,7 +43,7 @@ export interface Reglages {
 
 export const REGLAGES_PAR_DEFAUT: Reglages = {
   theme: 'sombre',
-  niveauMoteur: 10,
+  niveauMoteur: NIVEAU_PAR_DEFAUT,
   profondeurAnalyse: null,
   tempsParCoupMs: null,
   niveauAssistance: 'chaque-coup',
@@ -77,7 +78,12 @@ export function chargerReglages(): Reglages {
     // Les seuils sont fusionnés champ à champ : une ancienne version stockée
     // ne doit pas faire disparaître un seuil ajouté depuis.
     seuils: { ...SEUILS_PAR_DEFAUT, ...(o.seuils ?? {}) },
-    niveauMoteur: borner(o.niveauMoteur, 0, 20, REGLAGES_PAR_DEFAUT.niveauMoteur),
+    // Un réglage enregistré par une version antérieure stockait un nombre :
+    // on le convertit plutôt que de le perdre.
+    niveauMoteur:
+      typeof o.niveauMoteur === 'string'
+        ? o.niveauMoteur
+        : niveauDepuisAncienneValeur(o.niveauMoteur),
     multiPV: borner(o.multiPV, 1, 5, REGLAGES_PAR_DEFAUT.multiPV),
   };
 }

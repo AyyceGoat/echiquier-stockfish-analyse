@@ -14,11 +14,13 @@ import { useCoupDuMoteur, useEtatMoteur } from '../hooks/useMoteur.ts';
 import { useBalayage, useRaccourcisClavier } from '../hooks/useRaccourcis.ts';
 import { usePartie, type Promotion } from '../hooks/usePartie.ts';
 import { FEN_INITIALE } from '../lib/fen.ts';
+import { niveauParId } from '../lib/niveaux.ts';
 import { recupererPosition } from '../lib/positionPartagee.ts';
 import { Echiquier } from '../ui/Echiquier.tsx';
 import { DialoguePromotion } from '../ui/DialoguePromotion.tsx';
 import { ListeCoups } from '../ui/ListeCoups.tsx';
-import { Alerte, Bouton, Carte, Curseur, Segmente } from '../ui/composants.tsx';
+import { ChoixNiveau, NiveauActif } from '../ui/ChoixNiveau.tsx';
+import { Alerte, Bouton, Carte, Segmente } from '../ui/composants.tsx';
 
 type Adversaire = 'moteur' | 'humain';
 type CouleurChoisie = 'blancs' | 'noirs' | 'hasard';
@@ -56,11 +58,7 @@ export function PartieLibre({ naviguer }: { naviguer: (v: string) => void }) {
     setReflechit(true);
     setErreurMoteur(null);
 
-    // Un temps de réflexion proportionnel au niveau : à niveau bas, répondre
-    // instantanément donne une impression de partie bâclée.
-    const tempsMs = 200 + reglages.niveauMoteur * 60;
-
-    demander(fenCourante, reglages.niveauMoteur, tempsMs)
+    demander(fenCourante, niveauParId(reglages.niveauMoteur))
       .then(({ coup, erreur }) => {
         if (annule) return;
         setReflechit(false);
@@ -98,8 +96,8 @@ export function PartieLibre({ naviguer }: { naviguer: (v: string) => void }) {
       id: idPartie,
       date: Date.now(),
       mode: 'libre',
-      blanc: adversaire === 'moteur' && monCamp === 'b' ? `Stockfish (niveau ${reglages.niveauMoteur})` : 'Moi',
-      noir: adversaire === 'moteur' && monCamp === 'w' ? `Stockfish (niveau ${reglages.niveauMoteur})` : adversaire === 'humain' ? 'Adversaire' : 'Moi',
+      blanc: adversaire === 'moteur' && monCamp === 'b' ? `Stockfish (${niveauParId(reglages.niveauMoteur).libelle})` : 'Moi',
+      noir: adversaire === 'moteur' && monCamp === 'w' ? `Stockfish (${niveauParId(reglages.niveauMoteur).libelle})` : adversaire === 'humain' ? 'Adversaire' : 'Moi',
       resultat: fin.resultat,
       finPar: fin.raison,
       fenDepart: partie.fenDepart,
@@ -187,24 +185,13 @@ export function PartieLibre({ naviguer }: { naviguer: (v: string) => void }) {
 
           {adversaire === 'moteur' ? (
             <div className="mt-4 space-y-4">
-              <Curseur
-                libelle="Niveau de Stockfish"
-                valeur={reglages.niveauMoteur}
-                min={0}
-                max={20}
-                onChange={(v) => majReglages({ niveauMoteur: v })}
-              />
-              <p className="text-xs text-[var(--color-texte-doux)]">
-                {reglages.niveauMoteur <= 3
-                  ? 'Débutant : le moteur commet des erreurs fréquentes.'
-                  : reglages.niveauMoteur <= 8
-                    ? 'Joueur de club débutant.'
-                    : reglages.niveauMoteur <= 14
-                      ? 'Joueur de club confirmé.'
-                      : reglages.niveauMoteur <= 18
-                        ? 'Très fort. Peu d’erreurs.'
-                        : 'Pleine force. Aucune concession.'}
-              </p>
+              <div>
+                <p className="mb-1.5 text-sm text-[var(--color-texte-doux)]">Niveau</p>
+                <ChoixNiveau
+                  valeur={reglages.niveauMoteur}
+                  onChange={(id) => majReglages({ niveauMoteur: id })}
+                />
+              </div>
 
               <div>
                 <p className="mb-1.5 text-sm text-[var(--color-texte-doux)]">Je joue avec les</p>
@@ -290,11 +277,12 @@ export function PartieLibre({ naviguer }: { naviguer: (v: string) => void }) {
             </Bouton>
           </div>
 
-          {moteurReflechit ? (
-            <p className="mt-2 text-center text-sm text-[var(--color-texte-doux)]">
-              Stockfish réfléchit…
-            </p>
-          ) : null}
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+            {adversaire === 'moteur' ? <NiveauActif id={reglages.niveauMoteur} /> : null}
+            {moteurReflechit ? (
+              <span className="text-sm text-[var(--color-texte-doux)]">Stockfish réfléchit…</span>
+            ) : null}
+          </div>
         </div>
 
         <div className="space-y-4">

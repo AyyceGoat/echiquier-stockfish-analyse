@@ -10,6 +10,7 @@
  *  - tout échec est remonté explicitement, jamais avalé.
  */
 
+import type { NiveauMoteur } from '../lib/niveaux.ts';
 import {
   parseLigneUci,
   type Evaluation,
@@ -53,8 +54,8 @@ export interface ParametresRecherche {
   multiPV?: number;
   /** Analyse continue : ne s'arrête que sur `arreter()`. */
   infinie?: boolean;
-  /** Limite de force, 0–20. `undefined` = pleine force. */
-  niveau?: number;
+  /** Palier de force. `undefined` = pleine force, sans aucune limitation. */
+  niveau?: NiveauMoteur;
   /** Rappel appelé à chaque mise à jour de profondeur. */
   surProgression?: (r: ResultatRecherche) => void;
   signal?: AbortSignal;
@@ -89,7 +90,8 @@ export class Moteur {
   private lignes = new Map<number, LignePv>();
   private profondeurCourante = 0;
   private multiPVActuel = 1;
-  private niveauActuel: number | null = null;
+  /** Identifiant du palier réellement appliqué au moteur. */
+  private niveauApplique: string | null = null;
   private arretDemande = false;
   private garde: ReturnType<typeof setTimeout> | null = null;
 
@@ -565,17 +567,24 @@ export class Moteur {
       this.multiPVActuel = multiPV;
     }
 
-    // Limite de force : Skill Level plafonne la qualité du choix sans
-    // brider la recherche, ce qui reste plus naturel qu'une profondeur réduite.
+    // Limitation de force.
+    //
+    // Les trois options sont TOUJOURS envoyées ensemble, et dans cet ordre.
+    // L'ancienne version n'envoyait que `Skill Level` : `UCI_LimitStrength`
+    // restait sur sa valeur précédente, si bien qu'un palier calibré par Elo
+    // ne s'appliquait jamais, et qu'un retour à la pleine force après une
+    // partie bridée laissait la limitation active.
     const niveau = p.niveau ?? null;
-    if (niveau !== this.niveauActuel) {
-      if (niveau === null) {
-        w.postMessage('setoption name Skill Level value 20');
-        w.postMessage('setoption name UCI_LimitStrength value false');
+    const identite = niveau ? niveau.id : 'pleine-force';
+    if (identite !== this.niveauApplique) {
+      if (niveau && niveau.limiterElo && niveau.uciElo) {
+        w.postMessage('setoption name UCI_LimitStrength value true');
+        w.postMessage(`setoption name UCI_Elo value ${niveau.uciElo}`);
       } else {
-        w.postMessage(`setoption name Skill Level value ${Math.max(0, Math.min(20, niveau))}`);
+        w.postMessage('setoption name UCI_LimitStrength value false');
       }
-      this.niveauActuel = niveau;
+      w.postMessage(`setoption name Skill Level value ${niveau ? niveau.skill : 20}`);
+      this.niveauApplique = identite;
     }
 
     const position = p.coups?.length
@@ -583,10 +592,26 @@ export class Moteur {
       : `position fen ${p.fen}`;
     w.postMessage(position);
 
+    // La profondeur maximale du palier s'ajoute aux autres limites : c'est
+    // elle, et elle seule, qui permet de descendre sous le plancher d'UCI_Elo.
+    const profondeurDemandee = p.profondeur ?? this.profil.profondeurParDefaut;
+    const profondeur = niveau?.profondeurMax
+      ? Math.min(profondeurDemandee, niveau.profondeurMax)
+      : profondeurDemandee;
+
     let commande: string;
-    if (p.infinie) commande = 'go infinite';
-    else if (p.tempsMs) commande = `go movetime ${Math.round(p.tempsMs)}`;
-    else commande = `go depth ${p.profondeur ?? this.profil.profondeurParDefaut}`;
+    if (p.infinie) {
+      commande = niveau?.profondeurMax ? `go depth ${niveau.profondeurMax}` : 'go infinite';
+    } else if (p.tempsMs) {
+      const temps = Math.round(niveau ? Math.min(p.tempsMs, niveau.tempsMs) : p.tempsMs);
+      // Un temps seul ne bride pas assez à bas niveau : on cumule avec la
+      // profondeur quand le palier en impose une.
+      commande = niveau?.profondeurMax
+        ? `go depth ${niveau.profondeurMax} movetime ${temps}`
+        : `go movetime ${temps}`;
+    } else {
+      commande = `go depth ${profondeur}`;
+    }
     w.postMessage(commande);
 
     // Chien de garde : une recherche infinie n'expire pas, les autres oui.
@@ -635,7 +660,7 @@ export class Moteur {
     }
     this.worker = null;
     this.multiPVActuel = 1;
-    this.niveauActuel = null;
+    this.niveauApplique = null;
     this.resolveurUciok = null;
     this.resolveurReadyok = null;
     this.rejeterDemarrage = null;

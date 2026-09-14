@@ -32,19 +32,20 @@ import {
   type Explication,
 } from '../lib/explications.ts';
 import { FEN_INITIALE } from '../lib/fen.ts';
+import { niveauParId } from '../lib/niveaux.ts';
 import { recupererPosition } from '../lib/positionPartagee.ts';
 import { estCoupDeTheorie } from '../lib/ouvertures.ts';
 import { formaterEvaluation, type Evaluation } from '../lib/uci.ts';
 import { Echiquier, type FlecheEchiquier } from '../ui/Echiquier.tsx';
 import { DialoguePromotion } from '../ui/DialoguePromotion.tsx';
 import { ListeCoups } from '../ui/ListeCoups.tsx';
+import { ChoixNiveau, NiveauActif } from '../ui/ChoixNiveau.tsx';
 import {
   AffichageEval,
   Alerte,
   BarreEval,
   Bouton,
   Carte,
-  Curseur,
   Segmente,
 } from '../ui/composants.tsx';
 import { Chess } from 'chess.js';
@@ -237,7 +238,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
 
     let annule = false;
     setReflechit(true);
-    demander(fenCourante, reglages.niveauMoteur, 400)
+    demander(fenCourante, niveauParId(reglages.niveauMoteur))
       .then(({ coup, erreur: err }) => {
         if (annule) return;
         setReflechit(false);
@@ -276,8 +277,8 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
       id: idPartie,
       date: Date.now(),
       mode: 'assiste',
-      blanc: monCamp === 'w' ? 'Moi' : `Stockfish (niveau ${reglages.niveauMoteur})`,
-      noir: monCamp === 'b' ? 'Moi' : `Stockfish (niveau ${reglages.niveauMoteur})`,
+      blanc: monCamp === 'w' ? 'Moi' : `Stockfish (${niveauParId(reglages.niveauMoteur).libelle})`,
+      noir: monCamp === 'b' ? 'Moi' : `Stockfish (${niveauParId(reglages.niveauMoteur).libelle})`,
       resultat: fin.resultat,
       finPar: fin.raison,
       fenDepart: partie.fenDepart,
@@ -390,22 +391,10 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
         </Carte>
 
         <Carte titre="Adversaire">
-          <Curseur
-            libelle="Niveau de Stockfish"
+          <ChoixNiveau
             valeur={reglages.niveauMoteur}
-            min={0}
-            max={20}
-            onChange={(v) => majReglages({ niveauMoteur: v })}
+            onChange={(id) => majReglages({ niveauMoteur: id })}
           />
-          <div className="mt-4">
-            <Curseur
-              libelle="Variantes affichées (MultiPV)"
-              valeur={reglages.multiPV}
-              min={1}
-              max={5}
-              onChange={(v) => majReglages({ multiPV: v })}
-            />
-          </div>
         </Carte>
 
         <div className="grid grid-cols-2 gap-2">
@@ -483,11 +472,12 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
             </Bouton>
           </div>
 
-          {moteurReflechit ? (
-            <p className="mt-2 text-center text-sm text-[var(--color-texte-doux)]">
-              Stockfish réfléchit…
-            </p>
-          ) : null}
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+            <NiveauActif id={reglages.niveauMoteur} />
+            {moteurReflechit ? (
+              <span className="text-sm text-[var(--color-texte-doux)]">Stockfish réfléchit…</span>
+            ) : null}
+          </div>
         </div>
 
         <div className="space-y-4">

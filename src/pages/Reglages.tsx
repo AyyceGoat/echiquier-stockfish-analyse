@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { useReglages } from '../contexte.tsx';
 import { SEUILS_PAR_DEFAUT } from '../lib/classification.ts';
 import { moteursReconnaissance } from '../recognition/index.ts';
+import { ChoixNiveau } from '../ui/ChoixNiveau.tsx';
 import {
   Alerte,
   Bouton,
@@ -87,13 +88,15 @@ export function Reglages({ naviguer }: { naviguer: (v: string) => void }) {
 
       <Carte titre="Moteur">
         <div className="space-y-5">
-          <Curseur
-            libelle="Niveau de Stockfish en partie"
-            valeur={reglages.niveauMoteur}
-            min={0}
-            max={20}
-            onChange={(v) => majReglages({ niveauMoteur: v })}
-          />
+          <div>
+            <p className="mb-1.5 text-sm text-[var(--color-texte-doux)]">
+              Niveau du moteur en partie
+            </p>
+            <ChoixNiveau
+              valeur={reglages.niveauMoteur}
+              onChange={(id) => majReglages({ niveauMoteur: id })}
+            />
+          </div>
 
           <Curseur
             libelle="Variantes affichées (MultiPV)"

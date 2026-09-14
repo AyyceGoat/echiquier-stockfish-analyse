@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { moteurPartage, type EvenementMoteur, type LignePv } from '../engine/moteur.ts';
+import type { NiveauMoteur } from '../lib/niveaux.ts';
 
 export function useMoteur() {
   return moteurPartage();
@@ -107,8 +108,7 @@ export function useCoupDuMoteur() {
   const demander = useCallback(
     async (
       fen: string,
-      niveau: number,
-      tempsMs: number,
+      niveau: NiveauMoteur,
     ): Promise<{ coup: string | null; erreur: string | null }> => {
       controleur.current?.abort();
       const ctrl = new AbortController();
@@ -117,7 +117,8 @@ export function useCoupDuMoteur() {
         const r = await moteur.analyser({
           fen,
           niveau,
-          tempsMs,
+          // Le temps vient du palier : c'est lui qui définit la force.
+          tempsMs: niveau.tempsMs,
           multiPV: 1,
           signal: ctrl.signal,
         });
