@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Échiquier">
+  <rect width="32" height="32" rx="6" fill="#0b1020"/>
+  <g>
+    <rect x="4" y="4" width="24" height="24" fill="#6c8cff"/>
+    <path fill="#e8ecf8" d="M4 4h6v6H4zM16 4h6v6h-6zM10 10h6v6h-6zM22 10h6v6h-6zM4 16h6v6H4zM16 16h6v6h-6zM10 22h6v6h-6zM22 22h6v6h-6z"/>
+  </g>
+</svg>

@@ -1,0 +1,148 @@
+@import 'tailwindcss';
+
+/* Chessground : feuilles auto-contenues (SVG encodés en base64).
+   Aucune requête externe, ce qui convient à la fois au mode hors ligne
+   et à l'en-tête COEP: require-corp. */
+@import 'chessground/assets/chessground.base.css';
+@import 'chessground/assets/chessground.brown.css';
+@import 'chessground/assets/chessground.cburnett.css';
+
+@theme {
+  --color-fond: #0b1020;
+  --color-fond-2: #131a30;
+  --color-fond-3: #1b2440;
+  --color-bordure: #27304f;
+  --color-texte: #e8ecf8;
+  --color-texte-doux: #9aa5c4;
+  --color-accent: #6c8cff;
+  --color-accent-fort: #4d70ff;
+}
+
+:root {
+  color-scheme: dark;
+  --hauteur-barre: 3.75rem;
+}
+
+:root[data-theme='clair'] {
+  color-scheme: light;
+  --color-fond: #f6f7fb;
+  --color-fond-2: #ffffff;
+  --color-fond-3: #eceff7;
+  --color-bordure: #d5dae8;
+  --color-texte: #151a2b;
+  --color-texte-doux: #5b657f;
+}
+
+html,
+body,
+#racine {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-fond);
+  color: var(--color-texte);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    'Helvetica Neue',
+    Arial,
+    sans-serif;
+  /* Empêche tout défilement horizontal, y compris sur écran de 360 px. */
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+}
+
+/* Les gestes de balayage servent à naviguer dans les coups : on désactive
+   le retour arrière par balayage latéral du navigateur sur l'échiquier. */
+.zone-echiquier {
+  touch-action: manipulation;
+  overscroll-behavior-x: contain;
+}
+
+/* Encoches et barres système. */
+.avec-marges-sures {
+  padding-left: max(0.75rem, env(safe-area-inset-left));
+  padding-right: max(0.75rem, env(safe-area-inset-right));
+}
+
+.barre-basse {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.haut-sur {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* Chessground s'adapte au conteneur ; la taille est pilotée en vmin pour
+   que l'échiquier occupe toujours la bonne part de l'écran. */
+.cg-wrap {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: block;
+}
+
+/* Les pièces sont animées par transform uniquement : c'est ce qui garde
+   le glisser-déposer à 60 images par seconde sur mobile d'entrée de gamme. */
+cg-board piece {
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Zones tactiles : 44 px minimum, recommandation d'Apple et de Google. */
+.cible-tactile {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+}
+
+/* Barre d'évaluation verticale. */
+.barre-eval {
+  transition: height 220ms ease-out;
+}
+
+/* Masque les flèches des champs numériques, qui gênent au doigt. */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+}
+
+/* Case à faible confiance dans l'écran de correction. */
+.case-douteuse {
+  box-shadow: inset 0 0 0 3px rgba(251, 191, 36, 0.9);
+}
+
+/* Éditeur de position : réutilise les images de pièces de Chessground
+   (les règles ciblent `.cg-wrap piece.<role>.<color>`) tout en annulant
+   le dimensionnement en 12,5 % prévu pour un échiquier complet. */
+.piece-editeur {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+.piece-editeur piece {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  transform: none;
+}

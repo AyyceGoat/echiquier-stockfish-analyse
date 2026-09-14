@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -72,9 +72,16 @@ export default defineConfig({
     sourcemap: false,
     rollupOptions: {
       output: {
-        manualChunks: {
-          'vendor-react': ['react', 'react-dom'],
-          'vendor-chess': ['chess.js', 'chessground'],
+        // Découpage explicite : React et la couche échecs changent rarement,
+        // les isoler garde leur cache valide entre deux déploiements.
+        manualChunks: (id: string) => {
+          if (id.includes('node_modules/react') || id.includes('node_modules/scheduler')) {
+            return 'vendor-react';
+          }
+          if (id.includes('node_modules/chess.js') || id.includes('node_modules/chessground')) {
+            return 'vendor-chess';
+          }
+          return undefined;
         },
       },
     },

@@ -1,0 +1,69 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# --- Isolation multi-origine ---
+# COOP + COEP rendent `SharedArrayBuffer` disponible, donc Stockfish
+# multi-thread. Tous les sous-ressources du site sont de même origine, donc
+# `require-corp` ne casse rien. Les navigateurs qui n'appliquent pas ces
+# en-têtes (certaines WebView Android) n'obtiennent simplement pas
+# `crossOriginIsolated` : l'application bascule alors d'elle-même sur le
+# build mono-thread, sans erreur visible.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cross-Origin-Opener-Policy = "same-origin"
+    Cross-Origin-Embedder-Policy = "require-corp"
+    Cross-Origin-Resource-Policy = "same-origin"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(self), microphone=(), geolocation=()"
+
+# Le document lui-même ne doit jamais être servi depuis un cache périmé,
+# sinon une mise à jour ne parvient pas à l'appareil.
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+# Les noms de fichiers produits par Vite contiennent un hachage de contenu.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Le chemin du moteur porte son numéro de version : le contenu y est immuable.
+# C'est ce qui garantit qu'une mise à jour de Stockfish ne peut pas être
+# servie depuis un cache contenant l'ancien WASM.
+[[headers]]
+  for = "/engine/sf18/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+    Cross-Origin-Resource-Policy = "same-origin"
+
+[[headers]]
+  for = "/engine/sf18/*.wasm"
+  [headers.values]
+    Content-Type = "application/wasm"
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Application monopage : toute route inconnue rend index.html.
+# La règle passe après les fonctions (/api/*), qui ont leur propre routage.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

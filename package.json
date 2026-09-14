@@ -12,6 +12,7 @@
     "typecheck": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.125.0",
     "chess.js": "^1.4.0",
     "chessground": "^9.2.1",
     "idb": "^8.0.3",
