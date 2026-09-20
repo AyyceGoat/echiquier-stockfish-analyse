@@ -1,12 +1,25 @@
-# Échiquier — Stockfish & Analyse
+<div align="center">
 
-Application web d'échecs personnelle : jouer contre Stockfish, s'entraîner avec
-une assistance en temps réel, et analyser ses parties coup par coup. Interface
-entièrement en français, 100 % client, installable comme application mobile.
+# Échiquier
 
-## Les trois modes de jeu
+**Jouez. Comprenez. Progressez.**
 
-La différence porte sur **le moment où le moteur intervient**.
+Une application web d'échecs qui explique vos coups en français, plutôt que de
+vous donner un chiffre. Stockfish tourne dans votre navigateur : pas de compte,
+pas de publicité, et tout fonctionne hors ligne.
+
+[**→ Essayer l'application**](https://echiquier-stockfish-analyse.netlify.app)
+
+</div>
+
+![L'écran d'accueil](docs/images/accueil.png)
+
+---
+
+## Ce que ça fait
+
+Trois modes de jeu, qui se distinguent par **le moment où le moteur
+intervient** — c'est la seule chose à comprendre pour choisir.
 
 | Mode | Pendant la partie | À la fin |
 |---|---|---|
@@ -17,30 +30,28 @@ La différence porte sur **le moment où le moteur intervient**.
 S'y ajoute **Apprendre** : les règles en exercices jouables, la tactique par
 motif, et les exercices correspondant aux erreurs relevées dans vos parties.
 
-## Une seule flèche
+![Le jeu assisté : verdict, meilleur coup, et la seule flèche de l'écran](docs/images/jeu-assiste.png)
 
-L'échiquier n'affiche **jamais plus d'une flèche**. La règle tient par
-construction : le composant `Echiquier` expose une propriété `fleche` au
-singulier, pas un tableau. Les lignes MultiPV restent du texte, repliées
-derrière « Voir les alternatives » ; en choisir une remplace la flèche
-principale au lieu de s'y ajouter.
+### Les partis pris
 
-## Explications sans chiffre
+**Une seule flèche.** L'échiquier n'affiche **jamais plus d'une flèche**. La
+règle tient par construction : le composant `Echiquier` expose une propriété
+`fleche` au singulier, pas un tableau. Les lignes MultiPV restent du texte ;
+en choisir une remplace la flèche principale au lieu de s'y ajouter.
 
-`src/lib/explications.ts` produit une phrase concrète à partir de la seule
-géométrie de la position et de ce que Stockfish fournit déjà — aucun appel
-réseau, aucun modèle de langage, donc utilisable hors ligne et sans clé.
+**Des explications sans chiffre.** `src/lib/explications.ts` produit une phrase
+concrète à partir de la seule géométrie de la position et de ce que Stockfish
+fournit déjà — aucun appel réseau, aucun modèle de langage, donc utilisable
+hors ligne et sans clé.
 
 > Ce coup laisse votre cavalier en e4 en prise.
 > Il y avait un mat en 3 coups avec Ta8.
 > Votre dame reste menacée par le fou en b4.
 
-La phrase principale ne contient jamais d'évaluation chiffrée : « ce coup
-vous coûte 0,77 » n'apprend rien. Le nombre reste affiché à côté, plus petit.
+La phrase principale ne contient jamais d'évaluation chiffrée : « ce coup vous
+coûte 0,77 » n'apprend rien. Le nombre reste affiché à côté, plus petit.
 
-## Niveaux du moteur
-
-Six paliers nommés, avec leur ordre de grandeur Elo. `Skill Level` seul ne
+**Six niveaux nommés**, avec leur ordre de grandeur Elo. `Skill Level` seul ne
 descend pas assez bas — à 0, Stockfish joue encore vers 1350 Elo — et le
 plancher d'`UCI_Elo` est 1320. Les paliers bas brident donc aussi la
 **profondeur**, seul levier qui descende plus bas.
@@ -54,27 +65,108 @@ plancher d'`UCI_Elo` est 1320. Les paliers bas brident donc aussi la
 | Club (~1600) | 40 cp | 2 |
 | Maximum | 2 cp | 0 |
 
+**Import d'une position par photo.** Prenez en photo un échiquier réel ou
+collez une capture d'écran : la position est transcrite case par case, puis
+soumise à un écran de correction avant d'être validée.
+
+## Identité visuelle — « Laiton & Noyer »
+
+La direction est assumée : un club d'échecs, pas un tableau de bord.
+
+- **Fonds chauds** — espresso la nuit, ivoire le jour. Pas de gris bleuté.
+- **Un seul accent**, le laiton d'une pendule de tournoi. Il sert aux actions
+  principales, à l'onglet actif et au dernier coup joué — et à rien d'autre.
+- **Un plateau en noyer**, dessiné par un masque SVG en `crispEdges` plutôt
+  qu'un dégradé CSS, pour des arêtes nettes à toutes les tailles. Ses couleurs
+  sont les mêmes dans les deux thèmes : le bois d'un échiquier ne change pas
+  de teinte selon l'éclairage de la pièce.
+- **Fraunces** pour les titres, auto-hébergée en sous-ensemble latin (67 Ko) —
+  l'application doit fonctionner hors ligne, et l'en-tête COEP interdit les
+  polices tierces. Le corps de texte reste en police système : plus lisible en
+  petit corps, et gratuit.
+- **Des micro-animations courtes** — 260 ms au maximum, jamais de décalage de
+  mise en page, et toutes coupées sous `prefers-reduced-motion`.
+
+Les deux thèmes sont vérifiés au contraste : le texte courant tient 15:1 sur
+le fond, le texte secondaire 5,9:1, et l'accent 5,8:1 en thème clair. Aucune
+couleur sémantique n'est écrite en classe Tailwind figée — `text-emerald-400`
+tombe à 1,9:1 sur l'ivoire —, elles passent toutes par des variables de thème.
+
+<div align="center">
+
+| Thème clair | Mobile (390 px) |
+|---|---|
+| ![Thème clair](docs/images/accueil-clair.png) | ![Les exercices sur mobile](docs/images/apprendre-mobile.png) |
+
+</div>
+
+L'interface est vérifiée à 360 px, 390 px, sur tablette et sur ordinateur, en
+thème clair comme en thème sombre : aucun débordement horizontal, aucune cible
+tactile sous 44 px.
+
+## Stack technique
+
+| Domaine | Choix |
+|---|---|
+| Interface | React 19, TypeScript 5.9 (strict) |
+| Style | Tailwind CSS 4, variables de thème en CSS natif |
+| Échiquier | [Chessground](https://github.com/lichess-org/chessground) — le moteur de rendu de Lichess |
+| Règles du jeu | [chess.js](https://github.com/jhlywa/chess.js) |
+| Moteur | Stockfish 18.0.8 et 19 en WebAssembly, dans un Web Worker |
+| Stockage | IndexedDB via [idb](https://github.com/jakearchibald/idb) — parties et analyses |
+| Build | Vite 8, `vite-plugin-pwa` (Workbox) |
+| Tests | Vitest (logique pure) + Puppeteer (scénarios en vrai navigateur) |
+| Hébergement | Netlify, avec une fonction serverless pour la reconnaissance par image |
+
+Aucune bibliothèque de routage, de graphiques ni de composants : le routeur
+tient en quelques lignes de `src/contexte.tsx`, la courbe d'évaluation est une
+polyligne SVG, et les briques d'interface sont dans `src/ui/composants.tsx`.
+Sur un budget de chargement mobile, chaque dépendance évitée compte.
+
 ## Démarrage
 
 ```bash
 npm install
-npm run dev          # développement (COOP/COEP activés)
+npm run dev          # développement (COOP/COEP activés) — http://localhost:5173
 npm run build        # production
-npm run preview      # préversion de dist/
+npm run preview      # préversion de dist/ — http://localhost:4173
 ```
+
+Aucune configuration n'est nécessaire pour jouer, analyser ou s'entraîner.
+
+### Variables d'environnement
+
+Toutes facultatives, et utiles à la seule reconnaissance de position par
+photo. Voir [`.env.example`](.env.example) pour le détail.
+
+```bash
+cp .env.example .env
+```
+
+| Variable | Rôle |
+|---|---|
+| `ANTHROPIC_API_KEY` | Reconnaissance de position par modèle multimodal. Sans elle, la reconnaissance locale (hors ligne) reste disponible, et l'utilisateur peut saisir sa propre clé dans les réglages. |
+| `ANTHROPIC_BASE_URL` | Passerelle compatible avec l'API Anthropic, si vous en utilisez une. |
+
+Ces variables sont lues **uniquement** par la fonction serverless, côté
+serveur : aucune clé n'entre jamais dans le bundle envoyé au navigateur.
 
 ### Scripts utiles
 
 ```bash
 npm test                        # tests unitaires (logique critique)
 npm run test:navigateur         # test de bout en bout dans un vrai navigateur
+npm run test:mise-en-page       # 7 écrans x 4 largeurs x 2 thèmes : débordement,
+                                # cibles tactiles, erreurs de console
+npm run test:tout               # la suite complète, unitaire et navigateur
 npm run preview:sans-isolation  # sert dist/ SANS COOP/COEP, pour éprouver
                                 # le repli mono-thread de Stockfish
 npm run icones                  # régénère les icônes PWA
+npm run captures                # régénère les captures du README
 ```
 
-Le test navigateur suppose qu'une préversion tourne sur le port 4173 et
-qu'Edge ou Chrome est installé. Il vérifie le rendu en 360 px et 390 px,
+Les tests navigateur supposent qu'une préversion tourne sur le port 4173 et
+que Chrome ou Edge est installé. Ils vérifient le rendu en 360 px et 390 px,
 l'absence de débordement horizontal et d'erreur de console, et surtout que
 Stockfish répond réellement.
 
@@ -87,8 +179,8 @@ src/
   analysis/      analyse incrémentale d'une partie complète
   recognition/   reconnaissance de position (interface + deux implémentations)
   hooks/         état de partie, moteur, raccourcis clavier et gestes
-  ui/            composants, dont l'échiquier (Chessground) et l'écran de correction
-  pages/         les six écrans
+  ui/            briques d'interface, icônes, échiquier (Chessground), écran de correction
+  pages/         les écrans (accueil, jeu, analyse, apprendre, rapport, réglages)
 netlify/functions/
   reconnaitre.mjs  proxy vers le modèle multimodal — garde la clé d'API hors du bundle
 ```
@@ -103,7 +195,7 @@ jamais envoyée avant le `bestmove` de la précédente, sinon les évaluations
 retournées sont fausses.
 
 Les builds **lite** (~7 Mo) sont embarqués plutôt que les builds complets
-(113 Mo) : voir « Décisions » ci-dessous.
+(113 Mo), qu'aucun mobile ne téléchargerait.
 
 ### Reconnaissance de position
 
@@ -238,12 +330,16 @@ qui vérifient ce qu'aucun test unitaire ne peut voir :
 | `test:assiste` | Verdict après un coup, reprise effective du coup, reconnaissance locale sur une capture d'échiquier réelle. |
 | `test:rapport` | Analyse incrémentale complète, précision, moments charnières, graphique. |
 | `test:hors-ligne` | Installation du service worker, coupure du réseau, partie et moteur hors ligne. |
+| `test:mise-en-page` | Sept écrans, quatre largeurs, deux thèmes : aucun débordement horizontal, aucune cible tactile sous 44 px, aucune erreur de console. |
 
 Ces tests ont trouvé des défauts qu'aucune relecture n'aurait montrés :
 détection de grille verrouillée sur un demi-pas, moteur répondant avant que
 le joueur ait choisi de reprendre son coup, moteur muet hors ligne.
 
-## Licence
+## Licences des ressources tierces
 
-Stockfish est distribué sous GPLv3 — voir
-`public/engine/sf18/LICENSE-stockfish.txt`.
+| Ressource | Licence |
+|---|---|
+| Stockfish (WebAssembly) | GPLv3 — `public/engine/sf18/LICENSE-stockfish.txt` |
+| Pièces « cburnett » (via Chessground) | GPLv2+ |
+| Police Fraunces | SIL Open Font License 1.1 — `public/fonts/LICENSE-Fraunces.txt` |
