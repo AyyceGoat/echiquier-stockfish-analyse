@@ -1,0 +1,42 @@
+#!/bin/sh
+#
+# Retire toute attribution d'assistant automatique du message de commit.
+#
+# Pourquoi un hook plutôt qu'un réglage d'outil : un réglage ne vaut que pour
+# l'outil qui le lit, et seulement tant qu'il est là. Le hook, lui, s'applique
+# à tout ce qui produit un commit dans ce dépôt — ligne de commande, éditeur,
+# assistant, script de rebase — et il est versionné, donc relisible.
+#
+# Activation (locale, non versionnée, à refaire après un clone) :
+#   git config core.hooksPath .githooks
+#
+# Ce qui est retiré :
+#   - les lignes `Co-Authored-By:` désignant un assistant ;
+#   - les lignes « Generated with … » qui l'accompagnent parfois ;
+#   - les lignes vides laissées en fin de message par ces suppressions.
+#
+# Une ligne `Co-Authored-By:` désignant une PERSONNE est conservée : c'est un
+# usage légitime de Git, et l'écraser ferait disparaître une vraie
+# contribution.
+
+message="$1"
+[ -f "$message" ] || exit 0
+
+temporaire="$message.nettoye"
+
+# `[Cc]laude` et compagnie plutôt qu'une comparaison insensible à la casse :
+# `sed -i` et `-E` ne se comportent pas pareil partout, on reste en POSIX.
+sed -E \
+  -e '/^[[:space:]]*[Cc]o-[Aa]uthored-[Bb]y:.*([Cc]laude|[Aa]nthropic|noreply@anthropic\.com).*$/d' \
+  -e '/^[[:space:]]*🤖?[[:space:]]*[Gg]enerated with.*([Cc]laude|[Aa]nthropic).*$/d' \
+  "$message" > "$temporaire"
+
+# Supprime les lignes vides en fin de fichier, laissées par les coupes
+# ci-dessus, puis réécrit le message en place.
+awk 'BEGIN { vides = 0 }
+  /^[[:space:]]*$/ { vides++; next }
+  { while (vides > 0) { print ""; vides-- } print }
+' "$temporaire" > "$message"
+
+rm -f "$temporaire"
+exit 0
