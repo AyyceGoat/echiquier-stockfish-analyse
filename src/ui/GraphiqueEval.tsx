@@ -62,20 +62,28 @@ export function GraphiqueEval({
         role="img"
         aria-label="Courbe d’évaluation de la partie"
       >
-        {/* Moitié supérieure : avantage aux blancs. */}
-        <rect x={0} y={0} width={largeur} height={HAUTEUR / 2} className="fill-neutral-100/10" />
+        {/* Les deux moitiés reprennent les couleurs des cases : on lit
+            « les blancs sont au-dessus » sans légende. */}
+        <rect
+          x={0}
+          y={0}
+          width={largeur}
+          height={HAUTEUR / 2}
+          fill="var(--graph-blancs)"
+        />
         <rect
           x={0}
           y={HAUTEUR / 2}
           width={largeur}
           height={HAUTEUR / 2}
-          className="fill-neutral-900/40"
+          fill="var(--graph-noirs)"
         />
-        <path d={aire} className="fill-neutral-100/25" />
+        <path d={aire} fill="var(--graph-aire)" />
         <path
           d={chemin}
-          className="stroke-neutral-100"
-          strokeWidth={0.8}
+          stroke="var(--color-texte)"
+          strokeWidth={0.9}
+          strokeLinejoin="round"
           fill="none"
           vectorEffect="non-scaling-stroke"
         />
@@ -84,7 +92,7 @@ export function GraphiqueEval({
           y1={HAUTEUR / 2}
           x2={largeur}
           y2={HAUTEUR / 2}
-          className="stroke-[var(--color-texte-doux)]"
+          stroke="var(--color-texte-doux)"
           strokeWidth={0.5}
           vectorEffect="non-scaling-stroke"
         />
@@ -94,7 +102,7 @@ export function GraphiqueEval({
             y1={0}
             x2={indexActif}
             y2={HAUTEUR}
-            className="stroke-[var(--color-accent)]"
+            stroke="var(--color-accent)"
             strokeWidth={1.5}
             vectorEffect="non-scaling-stroke"
           />
@@ -110,7 +118,7 @@ export function GraphiqueEval({
             type="button"
             onClick={() => onSelection(i)}
             aria-label={`Aller au coup ${Math.floor(p.ply / 2) + 1}`}
-            className="h-full flex-1 focus:bg-white/10 focus:outline-none"
+            className="h-full flex-1 rounded-none focus-visible:bg-[var(--voile-accent)] focus-visible:outline-none"
             style={{ minWidth: 0 }}
           />
         ))}

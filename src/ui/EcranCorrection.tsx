@@ -328,7 +328,7 @@ export function EcranCorrection({
                     aria-pressed={roques.includes(r.lettre)}
                     className={`cible-tactile rounded-lg px-2 py-2 text-xs ${
                       roques.includes(r.lettre)
-                        ? 'bg-[var(--color-accent)] text-white'
+                        ? 'bg-[var(--color-accent)] text-[var(--color-sur-accent)]'
                         : 'bg-[var(--color-fond-3)] text-[var(--color-texte-doux)]'
                     }`}
                   >

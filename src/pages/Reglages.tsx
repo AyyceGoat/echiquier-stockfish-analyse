@@ -18,7 +18,9 @@ import {
   Carte,
   ChampTexte,
   Curseur,
+  EnTetePage,
   Interrupteur,
+  Repliable,
   Segmente,
 } from '../ui/composants.tsx';
 
@@ -46,9 +48,9 @@ export function Reglages({ naviguer }: { naviguer: (v: string) => void }) {
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">
-      <div className="pt-2">
-        <h1 className="text-2xl font-semibold">Réglages</h1>
-      </div>
+      <EnTetePage titre="Réglages">
+        Ces choix sont conservés sur cet appareil et s’appliquent à tous les écrans.
+      </EnTetePage>
 
       {!stockageDisponible ? (
         <Alerte titre="Les réglages ne peuvent pas être enregistrés" ton="alerte">
@@ -161,7 +163,14 @@ export function Reglages({ naviguer }: { naviguer: (v: string) => void }) {
             />
           </div>
 
-          <div className="space-y-4 border-t border-[var(--color-bordure)] pt-4">
+          {/* Replié par défaut : trois curseurs d'expert qu'on ouvre une
+              fois pour toutes, et qui occupaient à eux seuls un tiers de
+              l'écran des réglages. */}
+          <Repliable
+            titre="Seuils de classification"
+            apercu={`Imprécision ${reglages.seuils.imprecision.cp} cp · Erreur ${reglages.seuils.erreur.cp} cp · Gaffe ${reglages.seuils.gaffe.cp} cp`}
+          >
+            <div className="space-y-4">
             <p className="text-sm text-[var(--color-texte-doux)]">
               Seuils de classification, en centipions perdus par rapport au meilleur coup. Un coup
               n’est classé dans une catégorie que s’il perd aussi suffisamment en probabilité de
@@ -212,7 +221,8 @@ export function Reglages({ naviguer }: { naviguer: (v: string) => void }) {
             >
               Rétablir les seuils par défaut
             </Bouton>
-          </div>
+            </div>
+          </Repliable>
         </div>
       </Carte>
 

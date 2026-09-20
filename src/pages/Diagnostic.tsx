@@ -18,16 +18,16 @@ import {
 } from '../engine/capacites.ts';
 import { useEtatMoteur, useMoteur } from '../hooks/useMoteur.ts';
 import { moteurReconnaissance } from '../recognition/index.ts';
-import { Alerte, Bouton, Carte, Etiquette } from '../ui/composants.tsx';
+import { Alerte, Bouton, Carte, EnTetePage, Etiquette, type Ton } from '../ui/composants.tsx';
 
-function Ligne({ cle, valeur, ton }: { cle: string; valeur: string; ton?: string }) {
+function Ligne({ cle, valeur, ton }: { cle: string; valeur: string; ton?: Ton }) {
   return (
     <div className="flex items-start justify-between gap-3 border-b border-[var(--color-bordure)] py-2 last:border-0">
       <span className="text-sm text-[var(--color-texte-doux)]">{cle}</span>
       {ton ? (
         <Etiquette ton={ton}>{valeur}</Etiquette>
       ) : (
-        <span className="text-right font-mono text-sm">{valeur}</span>
+        <span className="chiffres text-right text-sm">{valeur}</span>
       )}
     </div>
   );
@@ -114,12 +114,9 @@ export function Diagnostic({ naviguer }: { naviguer: (v: string) => void }) {
 
   return (
     <div className="mx-auto max-w-2xl space-y-4">
-      <div className="pt-2">
-        <h1 className="text-2xl font-semibold">Diagnostic</h1>
-        <p className="mt-1 text-sm text-[var(--color-texte-doux)]">
-          Ces informations décrivent ce que l’application a détecté sur cet appareil.
-        </p>
-      </div>
+      <EnTetePage titre="Diagnostic">
+        Ces informations décrivent ce que l’application a détecté sur cet appareil.
+      </EnTetePage>
 
       {moteur.profil.raisonModeReduit ? (
         <Alerte titre="Le moteur tourne en mode réduit" ton="alerte">
@@ -212,7 +209,7 @@ export function Diagnostic({ naviguer }: { naviguer: (v: string) => void }) {
           }
         />
         {etatMoteur.erreur ? (
-          <p className="mt-2 text-sm text-red-400">{etatMoteur.erreur}</p>
+          <p className="mt-2 text-sm" style={{ color: 'var(--color-danger)' }}>{etatMoteur.erreur}</p>
         ) : null}
         {resultatTest ? (
           <p className="mt-3 rounded-lg bg-[var(--color-fond-3)] p-3 text-sm">{resultatTest}</p>

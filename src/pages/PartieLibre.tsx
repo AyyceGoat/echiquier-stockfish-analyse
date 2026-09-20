@@ -20,7 +20,7 @@ import { Echiquier } from '../ui/Echiquier.tsx';
 import { DialoguePromotion } from '../ui/DialoguePromotion.tsx';
 import { ListeCoups } from '../ui/ListeCoups.tsx';
 import { ChoixNiveau, NiveauActif } from '../ui/ChoixNiveau.tsx';
-import { Alerte, Bouton, Carte, Segmente } from '../ui/composants.tsx';
+import { Alerte, Bouton, Carte, EnTetePage, Points, Segmente } from '../ui/composants.tsx';
 
 type Adversaire = 'moteur' | 'humain';
 type CouleurChoisie = 'blancs' | 'noirs' | 'hasard';
@@ -165,12 +165,9 @@ export function PartieLibre({ naviguer }: { naviguer: (v: string) => void }) {
   if (!configuree) {
     return (
       <div className="mx-auto max-w-lg space-y-4">
-        <div className="pt-2">
-          <h1 className="text-2xl font-semibold">Partie libre</h1>
-          <p className="mt-1 text-sm text-[var(--color-texte-doux)]">
-            Aucune assistance pendant le jeu. L’analyse complète est proposée à la fin.
-          </p>
-        </div>
+        <EnTetePage titre="Partie libre">
+          Aucune assistance pendant le jeu. L’analyse complète est proposée à la fin.
+        </EnTetePage>
 
         <Carte titre="Adversaire">
           <Segmente
@@ -277,10 +274,17 @@ export function PartieLibre({ naviguer }: { naviguer: (v: string) => void }) {
             </Bouton>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+          {/* Hauteur minimale fixée : « Stockfish réfléchit » apparaît et
+              disparaît plusieurs fois par partie, et sans cela la ligne
+              passait à deux lignes en 360 px, ce qui faisait remonter
+              l'échiquier au moment précis où l'on visait une case. */}
+          <div className="mt-3 flex min-h-[1.875rem] flex-wrap items-center justify-center gap-x-3 gap-y-1">
             {adversaire === 'moteur' ? <NiveauActif id={reglages.niveauMoteur} /> : null}
             {moteurReflechit ? (
-              <span className="text-sm text-[var(--color-texte-doux)]">Stockfish réfléchit…</span>
+              <span className="flex items-center gap-1.5 text-sm text-[var(--color-texte-doux)]">
+                Stockfish réfléchit
+                <Points libelle="Stockfish réfléchit" />
+              </span>
             ) : null}
           </div>
         </div>

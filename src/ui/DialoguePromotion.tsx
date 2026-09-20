@@ -24,14 +24,14 @@ export function DialoguePromotion({
 }) {
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      className="voile-entre fixed inset-0 z-50 flex items-center justify-center bg-[rgb(10_7_4/0.68)] p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-label="Choix de la pièce de promotion"
       onClick={onAnnuler}
     >
       <div
-        className="w-full max-w-xs rounded-2xl border border-[var(--color-bordure)] bg-[var(--color-fond-2)] p-4"
+        className="panneau-entre w-full max-w-xs rounded-[var(--radius-lg)] border border-[var(--color-bordure)] bg-[var(--color-fond-2)] p-4 shadow-[var(--ombre-relief)]"
         onClick={(e) => e.stopPropagation()}
       >
         <p className="mb-3 text-center text-sm text-[var(--color-texte-doux)]">
@@ -44,14 +44,18 @@ export function DialoguePromotion({
               type="button"
               onClick={() => onChoisir(c.valeur)}
               aria-label={c.libelle}
-              className="cible-tactile flex aspect-square flex-col items-center justify-center gap-1 rounded-xl bg-[var(--color-fond-3)] hover:bg-[var(--color-bordure)]"
+              className="cible-tactile flex aspect-square flex-col items-center justify-center gap-1 rounded-[var(--radius-md)] border border-[var(--color-bordure)] bg-[var(--color-fond-3)] transition-[background-color,transform] duration-[var(--t-rapide)] hover:border-[var(--color-accent)] active:scale-95"
             >
               <span
                 aria-hidden
-                className={`text-3xl leading-none ${
-                  couleur === 'w' ? 'text-neutral-100' : 'text-neutral-900'
-                }`}
-                style={{ textShadow: couleur === 'w' ? '0 0 2px #000' : '0 0 2px #fff' }}
+                className="text-3xl leading-none"
+                style={{
+                  // Les glyphes sont pleins : on les peint à la couleur du
+                  // camp, avec un liseré de l'autre pour rester lisibles sur
+                  // les deux thèmes.
+                  color: couleur === 'w' ? '#f7f2e8' : '#15110d',
+                  textShadow: couleur === 'w' ? '0 0 2px #15110d' : '0 0 2px #f7f2e8',
+                }}
               >
                 {c.glyphe}
               </span>
@@ -62,7 +66,7 @@ export function DialoguePromotion({
         <button
           type="button"
           onClick={onAnnuler}
-          className="cible-tactile mt-3 w-full rounded-xl py-2 text-sm text-[var(--color-texte-doux)] hover:bg-[var(--color-fond-3)]"
+          className="cible-tactile mt-3 w-full rounded-[var(--radius-md)] py-2 text-sm text-[var(--color-texte-doux)] transition-colors duration-[var(--t-rapide)] hover:bg-[var(--color-fond-3)] hover:text-[var(--color-texte)]"
         >
           Annuler
         </button>

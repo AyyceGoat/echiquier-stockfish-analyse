@@ -24,8 +24,12 @@ import {
   BarreProgression,
   Bouton,
   Carte,
+  EnTetePage,
   Etiquette,
+  EtatVide,
+  Squelette,
 } from '../ui/composants.tsx';
+import { IconeHorloge } from '../ui/Icones.tsx';
 import { Chess } from 'chess.js';
 
 const ORDRE_BILAN: Classement[] = [
@@ -225,17 +229,34 @@ export function Rapport({
   }, [coups, partie]);
 
   if (chargement) {
-    return <p className="py-16 text-center text-[var(--color-texte-doux)]">Chargement…</p>;
+    return (
+      <div className="space-y-4" role="status" aria-label="Chargement du rapport">
+        <Squelette hauteur="2rem" largeur="60%" />
+        <Squelette hauteur="1rem" largeur="40%" />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Squelette hauteur="9rem" className="rounded-[var(--radius-lg)]" />
+          <Squelette hauteur="9rem" className="rounded-[var(--radius-lg)]" />
+        </div>
+      </div>
+    );
   }
 
   if (!partie) {
     return (
-      <div className="py-16 text-center">
-        <p className="mb-4 text-[var(--color-texte-doux)]">Cette partie est introuvable.</p>
-        <Bouton variante="principal" onClick={() => naviguer('/historique')}>
-          Voir l’historique
-        </Bouton>
-      </div>
+      <Carte>
+        <EtatVide
+          icone={<IconeHorloge />}
+          titre="Cette partie est introuvable"
+          action={
+            <Bouton variante="principal" onClick={() => naviguer('/historique')}>
+              Voir l’historique
+            </Bouton>
+          }
+        >
+          Elle a peut-être été supprimée, ou elle a été enregistrée sur un autre appareil : les
+          parties ne quittent jamais celui sur lequel elles ont été jouées.
+        </EtatVide>
+      </Carte>
     );
   }
 
@@ -247,30 +268,33 @@ export function Rapport({
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-        <div>
-          <h1 className="text-xl font-semibold">
+      <EnTetePage
+        titre={
+          <span className="text-[1.375rem] sm:text-[1.625rem]">
             {partie.blanc} — {partie.noir}
-          </h1>
-          <p className="text-sm text-[var(--color-texte-doux)]">
-            {new Date(partie.date).toLocaleString('fr-FR', {
-              dateStyle: 'long',
-              timeStyle: 'short',
-            })}{' '}
-            · {partie.resultat} · {partie.finPar}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {enCours ? (
-            <Bouton onClick={() => controleur.current?.abort()}>Interrompre</Bouton>
-          ) : (
-            <Bouton onClick={lancer}>{rapport ? 'Relancer' : 'Analyser'}</Bouton>
-          )}
-          <Bouton onClick={exporterPgn} disabled={coups.length === 0}>
-            Exporter en PGN
-          </Bouton>
-        </div>
-      </div>
+          </span>
+        }
+        action={
+          <>
+            {enCours ? (
+              <Bouton onClick={() => controleur.current?.abort()}>Interrompre</Bouton>
+            ) : (
+              <Bouton variante={rapport ? 'neutre' : 'principal'} onClick={lancer}>
+                {rapport ? 'Relancer' : 'Analyser'}
+              </Bouton>
+            )}
+            <Bouton onClick={exporterPgn} disabled={coups.length === 0}>
+              Exporter en PGN
+            </Bouton>
+          </>
+        }
+      >
+        {new Date(partie.date).toLocaleString('fr-FR', {
+          dateStyle: 'long',
+          timeStyle: 'short',
+        })}{' '}
+        · {partie.resultat} · {partie.finPar}
+      </EnTetePage>
 
       {erreur ? (
         <Alerte titre="L’analyse a échoué">
@@ -336,7 +360,9 @@ export function Rapport({
                   (c) => rapport.bilanBlancs[c] > 0 || rapport.bilanNoirs[c] > 0,
                 ).map((c) => (
                   <tr key={c}>
-                    <td className={`py-0.5 ${COULEURS[c]}`}>{LIBELLES[c]}</td>
+                    <td className="py-1" style={{ color: COULEURS[c] }}>
+                      {LIBELLES[c]}
+                    </td>
                     <td className="text-right font-mono tabular-nums">{rapport.bilanBlancs[c]}</td>
                     <td className="text-right font-mono tabular-nums">{rapport.bilanNoirs[c]}</td>
                   </tr>
@@ -361,7 +387,7 @@ export function Rapport({
                     {Math.floor(m.ply / 2) + 1}
                     {m.couleur === 'w' ? '.' : '…'} {m.san}
                   </span>
-                  <span className={`ml-2 text-xs ${COULEURS[m.classement]}`}>
+                  <span className="ml-2 text-xs font-medium" style={{ color: COULEURS[m.classement] }}>
                     {LIBELLES[m.classement]}
                   </span>
                   <span className="mt-0.5 block text-xs text-[var(--color-texte-doux)]">
@@ -416,9 +442,15 @@ export function Rapport({
 
         <div className="space-y-4">
           {coupActif ? (
-            <Carte titre={`Coup ${Math.floor(coupActif.ply / 2) + 1}${coupActif.couleur === 'w' ? '.' : '…'} ${coupActif.san}`}>
+            <Carte
+              titreContenu
+              titre={`Coup ${Math.floor(coupActif.ply / 2) + 1}${coupActif.couleur === 'w' ? '.' : '…'} ${coupActif.san}`}
+            >
               <div className="flex flex-wrap items-center gap-2">
-                <span className={`text-base font-semibold ${COULEURS[coupActif.classement]}`}>
+                <span
+                  className="titre text-base font-semibold"
+                  style={{ color: COULEURS[coupActif.classement] }}
+                >
                   {LIBELLES[coupActif.classement]}
                 </span>
                 <Etiquette>{formaterEvaluation(coupActif.apres)}</Etiquette>
@@ -438,7 +470,7 @@ export function Rapport({
               {!coupActif.estMeilleurCoup && coupActif.meilleurSan ? (
                 <div className="mt-3 rounded-xl bg-[var(--color-fond-3)] p-3">
                   <p className="text-xs text-[var(--color-texte-doux)]">Le meilleur coup était</p>
-                  <p className="mt-0.5 font-mono text-base font-semibold text-emerald-400">
+                  <p className="chiffres mt-0.5 text-base font-semibold" style={{ color: 'var(--color-succes)' }}>
                     {coupActif.meilleurSan}
                   </p>
                   {coupActif.varianteSan.length > 0 ? (
@@ -451,7 +483,7 @@ export function Rapport({
                             onClick={() => setIndexVariante(i + 1)}
                             className={`mr-1 rounded px-1 ${
                               indexVariante === i + 1
-                                ? 'bg-[var(--color-accent)] text-white'
+                                ? 'bg-[var(--color-accent)] text-[var(--color-sur-accent)]'
                                 : 'hover:bg-[var(--color-bordure)]'
                             }`}
                           >

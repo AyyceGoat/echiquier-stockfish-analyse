@@ -6,11 +6,20 @@
  * et l'échiquier, ce qui raccourcit nettement le démarrage en réseau lent.
  */
 
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState, type ComponentType, type SVGProps } from 'react';
 import { FournisseurReglages, useRoute } from './contexte.tsx';
 import { Accueil } from './pages/Accueil.tsx';
 import { PartieLibre } from './pages/PartieLibre.tsx';
-import { Bouton } from './ui/composants.tsx';
+import { Bouton, Squelette } from './ui/composants.tsx';
+import {
+  IconeCourbe,
+  IconeCurseurs,
+  IconeHorloge,
+  IconeLivre,
+  IconePion,
+  IconePionAssiste,
+  MarqueEchiquier,
+} from './ui/Icones.tsx';
 
 const JeuAssiste = lazy(() =>
   import('./pages/JeuAssiste.tsx').then((m) => ({ default: m.JeuAssiste })),
@@ -38,18 +47,41 @@ const Rapport = lazy(() => import('./pages/Rapport.tsx').then((m) => ({ default:
  * lignes ou se tronquaient. Cinq laissent 72 px par onglet, au-dessus de la
  * cible tactile recommandée.
  */
-const ONGLETS = [
-  { chemin: '/libre', libelle: 'Jouer', icone: '♙' },
-  { chemin: '/assiste', libelle: 'Assisté', icone: '★' },
-  { chemin: '/apprendre', libelle: 'Apprendre', icone: '♛' },
-  { chemin: '/analyse', libelle: 'Analyse', icone: '▦' },
-  { chemin: '/historique', libelle: 'Historique', icone: '☰' },
+const ONGLETS: {
+  chemin: string;
+  libelle: string;
+  Icone: ComponentType<SVGProps<SVGSVGElement>>;
+}[] = [
+  { chemin: '/libre', libelle: 'Jouer', Icone: IconePion },
+  { chemin: '/assiste', libelle: 'Assisté', Icone: IconePionAssiste },
+  { chemin: '/apprendre', libelle: 'Apprendre', Icone: IconeLivre },
+  { chemin: '/analyse', libelle: 'Analyse', Icone: IconeCourbe },
+  { chemin: '/historique', libelle: 'Historique', Icone: IconeHorloge },
 ];
 
-function Chargement({ quoi = 'Chargement…' }: { quoi?: string }) {
+/**
+ * Attente d'un écran chargé paresseusement.
+ *
+ * Un squelette à la forme approximative de l'écran, et non un « Chargement… »
+ * centré : le texte occupait 48 px de haut là où l'écran en fait 600, si
+ * bien que toute la page sautait au moment où le module arrivait.
+ */
+function Chargement() {
   return (
-    <div className="flex min-h-48 items-center justify-center">
-      <p className="text-sm text-[var(--color-texte-doux)]">{quoi}</p>
+    <div className="ecran-entre space-y-4 pt-1" role="status" aria-label="Chargement de l’écran">
+      <Squelette hauteur="2.25rem" largeur="60%" />
+      <Squelette hauteur="1rem" largeur="85%" />
+      <div className="grid gap-4 pt-2 lg:grid-cols-[minmax(0,1fr)_20rem]">
+        <Squelette
+          hauteur="min(88vw, 62vh, 34rem)"
+          largeur="min(88vw, 62vh, 34rem)"
+          className="mx-auto max-w-full rounded-[var(--radius-md)]"
+        />
+        <div className="hidden space-y-4 lg:block">
+          <Squelette hauteur="9rem" className="rounded-[var(--radius-lg)]" />
+          <Squelette hauteur="14rem" className="rounded-[var(--radius-lg)]" />
+        </div>
+      </div>
     </div>
   );
 }
@@ -67,12 +99,12 @@ function BandeauMiseAJour() {
   if (!visible) return null;
 
   return (
-    <div className="sticky top-0 z-30 flex items-center justify-between gap-3 bg-[var(--color-accent)] px-4 py-2 text-sm text-white">
-      <span>Une nouvelle version est disponible.</span>
+    <div className="panneau-entre sticky top-0 z-30 flex items-center justify-between gap-3 bg-[var(--color-accent)] px-4 py-2 text-sm text-[var(--color-sur-accent)]">
+      <span className="min-w-0">Une nouvelle version est disponible.</span>
       <button
         type="button"
         onClick={() => window.location.reload()}
-        className="cible-tactile rounded-lg bg-white/20 px-3 py-1.5 font-medium"
+        className="cible-tactile shrink-0 rounded-[var(--radius-sm)] bg-[var(--color-sur-accent)]/15 px-3 py-1.5 font-semibold transition-colors duration-[var(--t-rapide)] hover:bg-[var(--color-sur-accent)]/25"
       >
         Recharger
       </button>
@@ -83,8 +115,9 @@ function BandeauMiseAJour() {
 function Coque() {
   const { chemin, segments, naviguer } = useRoute();
 
+  const racine = segments[0] ?? '';
+
   const rendu = (() => {
-    const racine = segments[0] ?? '';
     switch (racine) {
       case '':
         return <Accueil naviguer={naviguer} />;
@@ -107,7 +140,10 @@ function Coque() {
       default:
         return (
           <div className="py-16 text-center">
-            <p className="mb-4 text-[var(--color-texte-doux)]">Cet écran n’existe pas.</p>
+            <p className="titre mb-1 text-lg font-semibold">Cet écran n’existe pas.</p>
+            <p className="mb-5 text-sm text-[var(--color-texte-doux)]">
+              L’adresse <span className="chiffres">{chemin}</span> ne correspond à aucun écran.
+            </p>
             <Bouton variante="principal" onClick={() => naviguer('/')}>
               Revenir à l’accueil
             </Bouton>
@@ -116,91 +152,120 @@ function Coque() {
     }
   })();
 
-  const ongletActif = (c: string) =>
-    c === '/' ? chemin === '/' : chemin.startsWith(c);
+  const ongletActif = (c: string) => (c === '/' ? chemin === '/' : chemin.startsWith(c));
+  const surAccueil = chemin === '/';
 
   return (
     <div className="flex min-h-full flex-col">
       <BandeauMiseAJour />
 
-      <header className="haut-sur avec-marges-sures sticky top-0 z-20 border-b border-[var(--color-bordure)] bg-[var(--color-fond)]/95 backdrop-blur">
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between py-3">
+      <header className="haut-sur avec-marges-sures sticky top-0 z-20 border-b border-[var(--color-bordure)] bg-[var(--color-fond)]/88 backdrop-blur-md">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-2 py-2.5">
           <button
             type="button"
             onClick={() => naviguer('/')}
-            className="flex items-center gap-2 text-left"
+            aria-current={surAccueil ? 'page' : undefined}
+            className="cible-tactile -ml-2 flex items-center gap-2.5 rounded-[var(--radius-md)] px-2 text-left transition-colors duration-[var(--t-rapide)] hover:bg-[var(--color-fond-2)]"
           >
-            <span aria-hidden className="text-xl">
-              &#9822;
+            <span className="flex items-center text-[1.4rem] leading-none">
+              <MarqueEchiquier />
             </span>
-            <span className="text-base font-semibold">Échiquier</span>
+            <span className="titre text-[1.0625rem] font-semibold tracking-tight">Échiquier</span>
           </button>
 
-          <nav className="hidden items-center gap-1 md:flex">
-            {ONGLETS.map((o) => (
-              <button
-                key={o.chemin}
-                type="button"
-                onClick={() => naviguer(o.chemin)}
-                className={`cible-tactile rounded-lg px-3 py-2 text-sm transition-colors ${
-                  ongletActif(o.chemin)
-                    ? 'bg-[var(--color-fond-3)] font-medium text-[var(--color-texte)]'
-                    : 'text-[var(--color-texte-doux)] hover:text-[var(--color-texte)]'
-                }`}
-              >
-                {o.libelle}
-              </button>
-            ))}
+          <nav aria-label="Navigation principale" className="hidden items-center gap-0.5 md:flex">
+            {ONGLETS.map((o) => {
+              const actif = ongletActif(o.chemin);
+              return (
+                <button
+                  key={o.chemin}
+                  type="button"
+                  onClick={() => naviguer(o.chemin)}
+                  aria-current={actif ? 'page' : undefined}
+                  className={`cible-tactile relative flex items-center gap-2 rounded-[var(--radius-md)] px-3 py-2 text-sm transition-colors duration-[var(--t-rapide)] ${
+                    actif
+                      ? 'bg-[var(--color-fond-2)] font-semibold text-[var(--color-texte)]'
+                      : 'text-[var(--color-texte-doux)] hover:bg-[var(--color-fond-2)] hover:text-[var(--color-texte)]'
+                  }`}
+                >
+                  <o.Icone
+                    className="text-[1.05rem]"
+                    style={{ color: actif ? 'var(--color-accent)' : undefined }}
+                  />
+                  {o.libelle}
+                </button>
+              );
+            })}
           </nav>
 
           <button
             type="button"
             onClick={() => naviguer('/reglages')}
             aria-label="Réglages"
-            className="cible-tactile rounded-lg px-3 py-2 text-[var(--color-texte-doux)] hover:text-[var(--color-texte)]"
+            aria-current={chemin.startsWith('/reglages') ? 'page' : undefined}
+            className={`cible-tactile -mr-2 flex items-center justify-center rounded-[var(--radius-md)] px-3 text-[1.15rem] transition-colors duration-[var(--t-rapide)] ${
+              chemin.startsWith('/reglages')
+                ? 'text-[var(--color-accent)]'
+                : 'text-[var(--color-texte-doux)] hover:text-[var(--color-texte)]'
+            }`}
           >
-            <span aria-hidden className="text-lg">
-              &#9881;
-            </span>
+            <IconeCurseurs />
           </button>
         </div>
       </header>
 
-      <main className="avec-marges-sures mx-auto w-full max-w-6xl flex-1 pb-24 pt-4 md:pb-8">
-        <Suspense fallback={<Chargement />}>{rendu}</Suspense>
+      <main className="avec-marges-sures mx-auto w-full max-w-6xl flex-1 pt-4 pb-24 md:pb-10">
+        {/* La clé force le remontage à chaque écran : c'est ce qui rejoue
+            l'animation d'entrée, et ce qui garantit qu'un écran ne réutilise
+            jamais l'état du précédent. */}
+        <Suspense fallback={<Chargement />}>
+          <div key={racine} className="ecran-entre">
+            {rendu}
+          </div>
+        </Suspense>
       </main>
 
       {/* Navigation basse : sur mobile, c'est la zone la plus accessible au pouce. */}
-      <nav className="barre-basse fixed inset-x-0 bottom-0 z-20 border-t border-[var(--color-bordure)] bg-[var(--color-fond-2)] md:hidden">
+      <nav
+        aria-label="Navigation principale"
+        className="barre-basse fixed inset-x-0 bottom-0 z-20 border-t border-[var(--color-bordure)] bg-[var(--color-fond-2)]/95 backdrop-blur-md md:hidden"
+      >
         <ul className="mx-auto flex max-w-2xl">
-          {ONGLETS.map((o) => (
-            <li key={o.chemin} className="flex-1">
-              <button
-                type="button"
-                onClick={() => naviguer(o.chemin)}
-                aria-current={ongletActif(o.chemin) ? 'page' : undefined}
-                className={`cible-tactile relative flex w-full flex-col items-center gap-0.5 py-2 text-[0.7rem] ${
-                  ongletActif(o.chemin)
-                    ? 'font-semibold text-[var(--color-accent)]'
-                    : 'text-[var(--color-texte-doux)]'
-                }`}
-              >
-                {/* Trait sous l'onglet actif : la couleur seule ne suffit pas
-                    à le repérer d'un coup d'œil, ni pour qui distingue mal
-                    les couleurs. */}
-                {ongletActif(o.chemin) ? (
+          {ONGLETS.map((o) => {
+            const actif = ongletActif(o.chemin);
+            return (
+              <li key={o.chemin} className="min-w-0 flex-1">
+                <button
+                  type="button"
+                  onClick={() => naviguer(o.chemin)}
+                  aria-current={actif ? 'page' : undefined}
+                  className={`cible-tactile relative flex w-full flex-col items-center justify-center gap-1 px-0.5 py-2 transition-colors duration-[var(--t-rapide)] ${
+                    actif ? 'text-[var(--color-accent)]' : 'text-[var(--color-texte-doux)]'
+                  }`}
+                >
+                  {/* Trait sous l'onglet actif : la couleur seule ne suffit pas
+                      à le repérer d'un coup d'œil, ni pour qui distingue mal
+                      les couleurs. */}
                   <span
                     aria-hidden
-                    className="absolute inset-x-3 top-0 h-0.5 rounded-full bg-[var(--color-accent)]"
+                    className="absolute inset-x-4 top-0 h-0.5 rounded-full bg-[var(--color-accent)] transition-opacity duration-[var(--t-normal)]"
+                    style={{ opacity: actif ? 1 : 0 }}
                   />
-                ) : null}
-                <span aria-hidden className="text-base leading-none">
-                  {o.icone}
-                </span>
-                {o.libelle}
-              </button>
-            </li>
-          ))}
+                  <o.Icone className="text-[1.2rem]" />
+                  {/* 0,68 rem : « Historique » tient sur une ligne à 360 px,
+                      soit 72 px par onglet. Au-dessus, il passait à deux
+                      lignes et décalait la barre entière. */}
+                  <span
+                    className={`w-full truncate text-center text-[0.68rem] leading-none ${
+                      actif ? 'font-semibold' : ''
+                    }`}
+                  >
+                    {o.libelle}
+                  </span>
+                </button>
+              </li>
+            );
+          })}
         </ul>
       </nav>
     </div>

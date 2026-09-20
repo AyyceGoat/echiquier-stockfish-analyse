@@ -9,10 +9,11 @@
 import { LIBELLE_QUALITE, type QualiteCoup } from '../lib/qualiteCoup.ts';
 import { formaterEvaluation, type Evaluation } from '../lib/uci.ts';
 
+/** Valeurs CSS, pas des classes : elles doivent suivre le thème. */
 const COULEUR_QUALITE: Record<QualiteCoup, string> = {
-  meilleur: 'text-emerald-400',
-  brillant: 'text-violet-400',
-  force: 'text-sky-400',
+  meilleur: 'var(--color-succes)',
+  brillant: 'var(--color-rare)',
+  force: 'var(--color-info)',
 };
 
 export function LibelleMeilleurCoup({
@@ -42,14 +43,15 @@ export function LibelleMeilleurCoup({
   return (
     <div className="mt-3 flex flex-wrap items-baseline justify-center gap-x-2 gap-y-1 text-center">
       <span
-        className={`text-sm font-semibold ${
-          estUneAlternative ? 'text-[var(--color-texte-doux)]' : COULEUR_QUALITE[qualite]
-        }`}
+        className="text-sm font-semibold"
+        style={{
+          color: estUneAlternative ? 'var(--color-texte-doux)' : COULEUR_QUALITE[qualite],
+        }}
       >
         {estUneAlternative ? 'Variante affichée' : LIBELLE_QUALITE[qualite]}
       </span>
-      <span className="font-mono text-lg font-semibold">{san}</span>
-      <span className="font-mono text-sm text-[var(--color-texte-doux)] tabular-nums">
+      <span className="chiffres text-lg font-semibold">{san}</span>
+      <span className="chiffres text-sm text-[var(--color-texte-doux)]">
         {formaterEvaluation(evaluation)}
       </span>
       {profondeur ? (

@@ -46,6 +46,8 @@ import {
   BarreEval,
   Bouton,
   Carte,
+  EnTetePage,
+  Points,
   Segmente,
 } from '../ui/composants.tsx';
 import { Chess } from 'chess.js';
@@ -365,13 +367,10 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
   if (!configuree) {
     return (
       <div className="mx-auto max-w-lg space-y-4">
-        <div className="pt-2">
-          <h1 className="text-2xl font-semibold">Jeu assisté</h1>
-          <p className="mt-1 text-sm text-[var(--color-texte-doux)]">
-            Stockfish commente chacun de vos coups pendant la partie. Vous pouvez reprendre un
-            coup ou le garder et continuer.
-          </p>
-        </div>
+        <EnTetePage titre="Jeu assisté">
+          Stockfish commente chacun de vos coups pendant la partie. Vous pouvez reprendre un coup
+          ou le garder et continuer.
+        </EnTetePage>
 
         <Carte titre="Niveau d’assistance">
           <Segmente
@@ -397,13 +396,14 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
           />
         </Carte>
 
+        {/* Une seule action mise en avant. Les deux boutons pleins se
+            valaient visuellement et obligeaient à lire avant de choisir ;
+            les blancs commencent, c'est le choix par défaut naturel. */}
         <div className="grid grid-cols-2 gap-2">
           <Bouton variante="principal" onClick={() => demarrer('w')}>
             Jouer les blancs
           </Bouton>
-          <Bouton variante="principal" onClick={() => demarrer('b')}>
-            Jouer les noirs
-          </Bouton>
+          <Bouton onClick={() => demarrer('b')}>Jouer les noirs</Bouton>
         </div>
       </div>
     );
@@ -472,10 +472,15 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
             </Bouton>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+          {/* Voir PartieLibre : la hauteur est réservée pour que l'échiquier
+              ne bouge pas quand l'indicateur apparaît. */}
+          <div className="mt-3 flex min-h-[1.875rem] flex-wrap items-center justify-center gap-x-3 gap-y-1">
             <NiveauActif id={reglages.niveauMoteur} />
             {moteurReflechit ? (
-              <span className="text-sm text-[var(--color-texte-doux)]">Stockfish réfléchit…</span>
+              <span className="flex items-center gap-1.5 text-sm text-[var(--color-texte-doux)]">
+                Stockfish réfléchit
+                <Points libelle="Stockfish réfléchit" />
+              </span>
             ) : null}
           </div>
         </div>
@@ -493,16 +498,26 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
 
           {verdictEnCours ? (
             <Carte titre="Votre coup">
-              <p className="text-sm text-[var(--color-texte-doux)]">Évaluation en cours…</p>
+              <p className="flex items-center gap-1.5 text-sm text-[var(--color-texte-doux)]">
+                Évaluation du coup
+                <Points libelle="Évaluation du coup en cours" />
+              </p>
             </Carte>
           ) : verdictVisible && verdict ? (
             <Carte titre="Votre coup">
-              <p className={`text-lg font-semibold ${COULEURS[verdict.classement]}`}>
+              <p
+                className="titre text-lg font-semibold"
+                style={{ color: COULEURS[verdict.classement] }}
+              >
                 {LIBELLES[verdict.classement]}
               </p>
               {verdict.perteAffichee ? (
                 <p className="mt-0.5 text-xs text-[var(--color-texte-doux)]">
-                  Perte : {verdict.perteAffichee.replace('−', '')} pion(s)
+                  {/* Accord réel plutôt qu'un « pion(s) » de formulaire :
+                      en français le singulier tient jusqu'à 2 exclu, donc
+                      « 0,62 pion » mais « 2,10 pions ». */}
+                  Perte : {verdict.perteAffichee.replace('−', '')}{' '}
+                  {Math.abs(verdict.perteCp) / 100 >= 2 ? 'pions' : 'pion'}
                 </p>
               ) : null}
 
@@ -516,7 +531,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
               {mauvaisCoup && verdict.meilleurSan ? (
                 <div className="mt-3 rounded-xl bg-[var(--color-fond-3)] p-3">
                   <p className="text-xs text-[var(--color-texte-doux)]">Il y avait mieux</p>
-                  <p className="mt-0.5 font-mono text-base font-semibold text-emerald-400">
+                  <p className="chiffres mt-0.5 text-base font-semibold" style={{ color: 'var(--color-succes)' }}>
                     {verdict.meilleurSan}
                   </p>
                   {verdict.varianteSan.length > 1 ? (
@@ -571,7 +586,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
               profondeur={analyse.profondeur}
             />
             {analyse.erreur ? (
-              <p className="mt-2 text-sm text-red-400">{analyse.erreur}</p>
+              <p className="mt-2 text-sm" style={{ color: 'var(--color-danger)' }}>{analyse.erreur}</p>
             ) : analyse.lignes.length === 0 ? (
               <p className="mt-2 text-sm text-[var(--color-texte-doux)]">
                 {monTour ? 'Recherche en cours…' : 'En attente de votre tour.'}

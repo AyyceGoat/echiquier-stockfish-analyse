@@ -73,13 +73,13 @@ export function ListeCoups({
         onClick={() => onSelection(entree.i)}
         className={`w-full rounded-md px-2 py-1.5 text-left font-mono text-sm transition-colors ${
           estActif
-            ? 'bg-[var(--color-accent)] text-white'
+            ? 'bg-[var(--color-accent)] text-[var(--color-sur-accent)]'
             : 'hover:bg-[var(--color-fond-3)]'
         }`}
       >
         <span>{entree.san}</span>
         {entree.classement && SYMBOLES[entree.classement] ? (
-          <span className={estActif ? 'text-white' : COULEURS[entree.classement]}>
+          <span style={estActif ? undefined : { color: COULEURS[entree.classement] }}>
             {SYMBOLES[entree.classement]}
           </span>
         ) : null}

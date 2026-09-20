@@ -21,7 +21,7 @@ import {
   type Exercice as TypeExercice,
 } from '../lib/exercices.ts';
 import { Exercice } from '../ui/Exercice.tsx';
-import { Bouton, Carte, Etiquette, Segmente } from '../ui/composants.tsx';
+import { Bouton, Carte, EnTetePage, Etiquette, Segmente, Squelette } from '../ui/composants.tsx';
 
 type Onglet = 'bases' | 'tactique' | 'erreurs';
 
@@ -132,13 +132,10 @@ export function Apprendre({ naviguer }: { naviguer: (v: string) => void }) {
 
   return (
     <div className="space-y-4">
-      <div className="pt-2">
-        <h1 className="text-2xl font-semibold">Apprendre</h1>
-        <p className="mt-1 text-sm text-[var(--color-texte-doux)]">
-          Des exercices à jouer sur l’échiquier. {reussis.size} réussi
-          {reussis.size > 1 ? 's' : ''} sur {EXERCICES.length}.
-        </p>
-      </div>
+      <EnTetePage titre="Apprendre">
+        Des exercices à jouer sur l’échiquier. {reussis.size} réussi
+        {reussis.size > 1 ? 's' : ''} sur {EXERCICES.length}.
+      </EnTetePage>
 
       <Segmente
         valeur={onglet}
@@ -154,7 +151,12 @@ export function Apprendre({ naviguer }: { naviguer: (v: string) => void }) {
       {onglet === 'erreurs' ? (
         <Carte titre="Ce que vos parties révèlent">
           {partiesAnalysees === null ? (
-            <p className="text-sm text-[var(--color-texte-doux)]">Lecture de l’historique…</p>
+            // La place est réservée : sans cela, la carte grandissait d'une
+            // ligne à l'autre au moment où l'historique arrivait.
+            <div className="space-y-2" role="status" aria-label="Lecture de l’historique">
+              <Squelette hauteur="1rem" largeur="70%" />
+              <Squelette hauteur="1.75rem" largeur="45%" className="rounded-full" />
+            </div>
           ) : partiesAnalysees === 0 ? (
             <>
               <p className="text-sm text-[var(--color-texte-doux)]">
@@ -201,11 +203,15 @@ export function Apprendre({ naviguer }: { naviguer: (v: string) => void }) {
           />
 
           <Carte titre="Progression">
-            <div className="mb-3 flex items-center justify-between text-sm">
+            {/* `flex-wrap` et non une rangée figée : en 360 px, « 0 sur 13
+                dans cette série » et les deux boutons ne tiennent pas côte à
+                côte, et le texte se retrouvait coupé en deux lignes contre
+                les boutons. */}
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-sm">
               <span className="text-[var(--color-texte-doux)]">
                 {faits} sur {liste.length} dans cette série
               </span>
-              <span className="flex gap-2">
+              <span className="flex gap-1">
                 <Bouton
                   variante="discret"
                   onClick={() => setIndex(Math.max(0, index - 1))}
@@ -235,9 +241,9 @@ export function Apprendre({ naviguer }: { naviguer: (v: string) => void }) {
                     aria-current={i === index}
                     className={`cible-tactile h-9 w-9 rounded-lg text-xs font-medium ${
                       i === index
-                        ? 'bg-[var(--color-accent)] text-white'
+                        ? 'bg-[var(--color-accent)] text-[var(--color-sur-accent)]'
                         : reussis.has(e.id)
-                          ? 'bg-emerald-500/20 text-emerald-300'
+                          ? 'bg-[var(--voile-succes)] text-[var(--color-succes)]'
                           : 'bg-[var(--color-fond-3)] text-[var(--color-texte-doux)]'
                     }`}
                   >

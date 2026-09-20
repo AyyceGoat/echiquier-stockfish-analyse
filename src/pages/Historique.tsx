@@ -10,7 +10,16 @@ import {
   viderHistorique,
   type PartieEnregistree,
 } from '../db/parties.ts';
-import { Alerte, Bouton, Carte, Etiquette } from '../ui/composants.tsx';
+import {
+  Alerte,
+  Bouton,
+  Carte,
+  EnTetePage,
+  Etiquette,
+  EtatVide,
+  SqueletteListe,
+} from '../ui/composants.tsx';
+import { IconeHorloge } from '../ui/Icones.tsx';
 
 export function Historique({ naviguer }: { naviguer: (v: string) => void }) {
   const [parties, setParties] = useState<PartieEnregistree[]>([]);
@@ -31,7 +40,14 @@ export function Historique({ naviguer }: { naviguer: (v: string) => void }) {
   }, [recharger]);
 
   if (chargement) {
-    return <p className="py-16 text-center text-[var(--color-texte-doux)]">Chargement…</p>;
+    // Le squelette a la forme de la liste finale : c'est ce qui évite que
+    // la page se réorganise quand IndexedDB répond.
+    return (
+      <div className="space-y-4">
+        <EnTetePage titre="Historique">Lecture des parties enregistrées…</EnTetePage>
+        <SqueletteListe lignes={4} hauteur="5.25rem" />
+      </div>
+    );
   }
 
   if (!disponible) {
@@ -50,51 +66,53 @@ export function Historique({ naviguer }: { naviguer: (v: string) => void }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-        <div>
-          <h1 className="text-2xl font-semibold">Historique</h1>
-          <p className="mt-1 text-sm text-[var(--color-texte-doux)]">
-            {parties.length === 0
-              ? 'Aucune partie enregistrée pour l’instant.'
-              : `${parties.length} partie${parties.length > 1 ? 's' : ''} enregistrée${
-                  parties.length > 1 ? 's' : ''
-                }.`}
-          </p>
-        </div>
-        {parties.length > 0 ? (
-          confirmationVidage ? (
-            <div className="flex gap-2">
-              <Bouton
-                variante="danger"
-                onClick={async () => {
-                  await viderHistorique();
-                  setConfirmation(false);
-                  void recharger();
-                }}
-              >
-                Confirmer la suppression
+      <EnTetePage
+        titre="Historique"
+        action={
+          parties.length > 0 ? (
+            confirmationVidage ? (
+              <>
+                <Bouton
+                  variante="danger"
+                  onClick={async () => {
+                    await viderHistorique();
+                    setConfirmation(false);
+                    void recharger();
+                  }}
+                >
+                  Confirmer la suppression
+                </Bouton>
+                <Bouton onClick={() => setConfirmation(false)}>Annuler</Bouton>
+              </>
+            ) : (
+              <Bouton variante="discret" onClick={() => setConfirmation(true)}>
+                Tout effacer
               </Bouton>
-              <Bouton onClick={() => setConfirmation(false)}>Annuler</Bouton>
-            </div>
-          ) : (
-            <Bouton variante="discret" onClick={() => setConfirmation(true)}>
-              Tout effacer
-            </Bouton>
-          )
-        ) : null}
-      </div>
+            )
+          ) : null
+        }
+      >
+        {parties.length === 0
+          ? 'Aucune partie enregistrée pour l’instant.'
+          : `${parties.length} partie${parties.length > 1 ? 's' : ''} enregistrée${
+              parties.length > 1 ? 's' : ''
+            }.`}
+      </EnTetePage>
 
       {parties.length === 0 ? (
         <Carte>
-          <p className="text-sm text-[var(--color-texte-doux)]">
+          <EtatVide
+            icone={<IconeHorloge />}
+            titre="Rien à relire pour l’instant"
+            action={
+              <Bouton variante="principal" onClick={() => naviguer('/libre')}>
+                Jouer une partie
+              </Bouton>
+            }
+          >
             Les parties terminées en mode libre ou assisté apparaissent ici automatiquement, avec
             leur analyse une fois celle-ci lancée.
-          </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <Bouton variante="principal" onClick={() => naviguer('/libre')}>
-              Jouer une partie
-            </Bouton>
-          </div>
+          </EtatVide>
         </Carte>
       ) : (
         <ul className="space-y-2">
@@ -146,7 +164,7 @@ export function Historique({ naviguer }: { naviguer: (v: string) => void }) {
                     await supprimerPartie(p.id);
                     void recharger();
                   }}
-                  className="cible-tactile rounded-r-2xl px-4 text-[var(--color-texte-doux)] hover:bg-red-500/10 hover:text-red-400"
+                  className="cible-tactile rounded-r-[var(--radius-lg)] px-4 text-[var(--color-texte-doux)] transition-colors duration-[var(--t-rapide)] hover:bg-[var(--voile-danger)] hover:text-[var(--color-danger)]"
                 >
                   ✕
                 </button>

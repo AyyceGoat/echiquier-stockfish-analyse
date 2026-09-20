@@ -139,7 +139,27 @@ export function Echiquier({
       draggable: { enabled: true, showGhost: true, distance: 3 },
       selectable: { enabled: true },
       highlight: { lastMove: true, check: true },
-      drawable: { enabled: true, visible: true, defaultSnapToValidMove: true },
+      drawable: {
+        enabled: true,
+        visible: true,
+        defaultSnapToValidMove: true,
+        // Pinceaux réaccordés pour le plateau en noyer. Le vert d'origine
+        // (#15781B) est presque aussi sombre que les cases foncées : la
+        // flèche s'y perdait. Ces teintes sont celles des couleurs
+        // sémantiques de l'application, remontées en luminosité pour tenir
+        // sur le bois.
+        brushes: {
+          green: { key: 'g', color: '#3fbf63', opacity: 0.95, lineWidth: 10 },
+          red: { key: 'r', color: '#e0503f', opacity: 0.95, lineWidth: 10 },
+          blue: { key: 'b', color: '#3f9ed6', opacity: 0.95, lineWidth: 10 },
+          yellow: { key: 'y', color: '#e9b949', opacity: 0.95, lineWidth: 10 },
+          paleBlue: { key: 'pb', color: '#3f9ed6', opacity: 0.4, lineWidth: 15 },
+          paleGreen: { key: 'pg', color: '#3fbf63', opacity: 0.4, lineWidth: 15 },
+          paleRed: { key: 'pr', color: '#e0503f', opacity: 0.4, lineWidth: 15 },
+          paleGrey: { key: 'pgr', color: '#8a8177', opacity: 0.35, lineWidth: 15 },
+          purple: { key: 'purple', color: '#a877c9', opacity: 0.65, lineWidth: 10 },
+        },
+      },
       events: {
         select: (caseCliquee) => rappelClic.current?.(caseCliquee),
       },
@@ -152,6 +172,13 @@ export function Echiquier({
     // Volontairement sans dépendances : l'instance ne doit jamais être recréée.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // `.cg-wrap` est créé par Chessground : on ne peut pas lui passer de
+  // classe par JSX, il faut la poser après coup.
+  useEffect(() => {
+    const wrap = conteneur.current?.querySelector('.cg-wrap');
+    wrap?.classList.toggle('sans-fioritures', !animations);
+  }, [animations]);
 
   const custom = useMemo(() => {
     const m = new Map<Key, string>();
@@ -205,8 +232,10 @@ export function Echiquier({
       aria-label="Échiquier"
       id={idZone}
     >
-      {/* Le rapport d'aspect garantit un carré parfait sans calcul en JS. */}
-      <div className="relative aspect-square w-full max-w-full">
+      {/* Le rapport d'aspect garantit un carré parfait sans calcul en JS.
+          Il réserve aussi la place du plateau avant que Chessground n'ait
+          rendu quoi que ce soit : la page ne bouge pas au montage. */}
+      <div className="plateau-cadre relative aspect-square w-full max-w-full">
         <div ref={conteneur} className="absolute inset-0" />
       </div>
     </div>

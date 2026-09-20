@@ -32,6 +32,7 @@ import {
   Bouton,
   Carte,
   ChampTexte,
+  EnTetePage,
   Segmente,
 } from '../ui/composants.tsx';
 
@@ -197,12 +198,9 @@ export function AnalysePosition({ naviguer }: { naviguer: (v: string) => void })
   if (!chargee) {
     return (
       <div className="mx-auto max-w-2xl space-y-4">
-        <div className="pt-2">
-          <h1 className="text-2xl font-semibold">Analyse de position</h1>
-          <p className="mt-1 text-sm text-[var(--color-texte-doux)]">
-            Importez une position par photo, par FEN ou par PGN, puis explorez-la librement.
-          </p>
-        </div>
+        <EnTetePage titre="Analyse de position">
+          Importez une position par photo, par FEN ou par PGN, puis explorez-la librement.
+        </EnTetePage>
 
         <Segmente
           valeur={source}
@@ -366,7 +364,7 @@ export function AnalysePosition({ naviguer }: { naviguer: (v: string) => void })
             />
 
             {analyse.erreur ? (
-              <p className="mt-2 text-sm text-red-400">{analyse.erreur}</p>
+              <p className="mt-2 text-sm" style={{ color: 'var(--color-danger)' }}>{analyse.erreur}</p>
             ) : !analyseActive ? (
               <p className="mt-2 text-sm text-[var(--color-texte-doux)]">
                 Analyse en pause. <kbd className="font-mono">Espace</kbd> pour la relancer.

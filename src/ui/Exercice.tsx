@@ -129,6 +129,7 @@ export function Exercice({
     <div className="space-y-4">
       <Carte
         titre={exercice.titre}
+        titreContenu
         action={
           <span className="text-xs text-[var(--color-texte-doux)]">
             {numero} / {total}
@@ -156,17 +157,23 @@ export function Exercice({
             message ferait sauter les boutons sous le doigt. */}
         <div className="mt-3 min-h-[3.5rem]">
           {etat.phase === 'reussi' ? (
-            <div className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 p-3">
-              <p className="text-sm font-semibold text-emerald-300">{etat.message}</p>
+            <div className="panneau-entre rounded-[var(--radius-md)] border border-[var(--bord-succes)] bg-[var(--voile-succes)] p-3">
+              <p className="text-sm font-semibold" style={{ color: 'var(--color-succes)' }}>
+                {etat.message}
+              </p>
               <p className="mt-1 text-sm text-[var(--color-texte)]">{exercice.lecon}</p>
             </div>
           ) : etat.phase === 'echoue' ? (
-            <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
-              <p className="text-sm text-amber-200">{etat.message}</p>
-              <p className="mt-1 text-xs text-amber-200/80">Réessayez : la position est rétablie.</p>
+            <div className="panneau-entre rounded-[var(--radius-md)] border border-[var(--bord-alerte)] bg-[var(--voile-alerte)] p-3">
+              <p className="text-sm font-semibold" style={{ color: 'var(--color-alerte)' }}>
+                {etat.message}
+              </p>
+              <p className="mt-1 text-xs text-[var(--color-texte-doux)]">
+                Réessayez : la position est rétablie.
+              </p>
             </div>
           ) : indiceVisible ? (
-            <p className="rounded-xl bg-[var(--color-fond-3)] p-3 text-sm text-[var(--color-texte-doux)]">
+            <p className="panneau-entre rounded-[var(--radius-md)] bg-[var(--color-fond-3)] p-3 text-sm text-[var(--color-texte-doux)]">
               {exercice.indice}
             </p>
           ) : null}
@@ -191,7 +198,7 @@ export function Exercice({
           )}
           {solutionVisible && etat.phase !== 'reussi' && solutionSan ? (
             <span className="self-center text-sm text-[var(--color-texte-doux)]">
-              La solution est <span className="font-mono font-semibold">{solutionSan}</span>.
+              La solution est <span className="chiffres font-semibold">{solutionSan}</span>.
             </span>
           ) : null}
         </div>
