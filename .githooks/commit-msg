@@ -1,0 +1,40 @@
+#!/bin/sh
+#
+# Ce dépôt n'a qu'un auteur : le hook le garantit sur chaque message.
+#
+# Pourquoi un hook plutôt qu'un réglage d'outil : un réglage ne vaut que pour
+# l'outil qui le lit, et seulement tant qu'il est là. Le hook, lui, s'applique
+# à tout ce qui produit un commit dans ce dépôt — ligne de commande, éditeur,
+# script de rebase — et il est versionné, donc relisible.
+#
+# Activation (locale, non versionnée, à refaire après un clone) :
+#   git config core.hooksPath .githooks
+#
+# Ce qui est retiré :
+#   - les lignes `Co-Authored-By:`, quelles qu'elles soient ;
+#   - les lignes « Generated with … » ;
+#   - les lignes vides laissées en fin de message par ces suppressions.
+#
+# La règle est volontairement sans exception. Un dépôt à un seul auteur n'a pas
+# de co-auteur à déclarer, et une règle qui trie les cas se contourne.
+
+message="$1"
+[ -f "$message" ] || exit 0
+
+temporaire="$message.nettoye"
+
+# `-E` et des classes POSIX : `sed` ne se comporte pas pareil partout.
+sed -E \
+  -e '/^[[:space:]]*[Cc]o-[Aa]uthored-[Bb]y:.*$/d' \
+  -e '/^[[:space:]]*.{0,4}[[:space:]]*[Gg]enerated with.*$/d' \
+  "$message" > "$temporaire"
+
+# Supprime les lignes vides en fin de fichier, laissées par les coupes
+# ci-dessus, puis réécrit le message en place.
+awk 'BEGIN { vides = 0 }
+  /^[[:space:]]*$/ { vides++; next }
+  { while (vides > 0) { print ""; vides-- } print }
+' "$temporaire" > "$message"
+
+rm -f "$temporaire"
+exit 0
