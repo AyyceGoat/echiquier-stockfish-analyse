@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5"
     />
-    <meta name="theme-color" content="#0b1020" />
+    <meta name="theme-color" content="#14120f" />
     <meta name="color-scheme" content="dark light" />
     <meta
       name="description"
@@ -18,12 +18,57 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+
+    <!--
+      La serif de titrage est préchargée : sans cela, elle arrive après la
+      feuille de style et les titres basculent de la sans système à Fraunces
+      sous les yeux de l'utilisateur. `crossorigin` est obligatoire même en
+      même origine pour que le préchargement d'une police soit réutilisé.
+    -->
+    <link
+      rel="preload"
+      href="/fonts/fraunces-latin.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+
     <title>Échiquier — Stockfish &amp; Analyse</title>
+
+    <!--
+      Thème appliqué AVANT le premier rendu.
+      `main.tsx` le fait aussi, mais il ne s'exécute qu'une fois le module
+      chargé : entre-temps, un utilisateur en thème clair voyait une page
+      sombre pendant quelques centaines de millisecondes. Ce script est
+      volontairement en clair dans le document, synchrone et minuscule.
+    -->
+    <script>
+      (function () {
+        try {
+          var brut = localStorage.getItem('echiquier.reglages.v1');
+          var theme = brut ? JSON.parse(brut).theme : 'sombre';
+          var resolu =
+            theme === 'systeme'
+              ? matchMedia('(prefers-color-scheme: light)').matches
+                ? 'clair'
+                : 'sombre'
+              : theme === 'clair'
+                ? 'clair'
+                : 'sombre';
+          document.documentElement.dataset.theme = resolu;
+          document
+            .querySelector('meta[name="theme-color"]')
+            .setAttribute('content', resolu === 'clair' ? '#f4efe6' : '#14120f');
+        } catch (e) {
+          /* Stockage bloqué : on reste sur le thème sombre du document. */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="racine"></div>
     <noscript>
-      <p style="padding: 1.5rem; font-family: system-ui; color: #e8ecf8">
+      <p style="padding: 1.5rem; font-family: system-ui; color: #f3ede4">
         Cette application a besoin de JavaScript pour fonctionner.
       </p>
     </noscript>

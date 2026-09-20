@@ -62,7 +62,7 @@ export function FournisseurReglages({ children }: { children: ReactNode }) {
     document.documentElement.dataset.theme = resolu;
     document
       .querySelector('meta[name="theme-color"]')
-      ?.setAttribute('content', resolu === 'clair' ? '#f6f7fb' : '#0b1020');
+      ?.setAttribute('content', resolu === 'clair' ? '#f4efe6' : '#14120f');
   }, [reglages.theme]);
 
   // Suit les changements de préférence système quand « Système » est choisi.

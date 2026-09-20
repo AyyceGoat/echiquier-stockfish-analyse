@@ -2,35 +2,205 @@
 
 /* Chessground : feuilles auto-contenues (SVG encodés en base64).
    Aucune requête externe, ce qui convient à la fois au mode hors ligne
-   et à l'en-tête COEP: require-corp. */
+   et à l'en-tête COEP: require-corp.
+
+   `chessground.brown.css` n'est volontairement PAS importée : le plateau et
+   ses surbrillances sont redéfinis plus bas, aux couleurs de l'application. */
 @import 'chessground/assets/chessground.base.css';
-@import 'chessground/assets/chessground.brown.css';
 @import 'chessground/assets/chessground.cburnett.css';
 
+/* ==========================================================================
+   IDENTITÉ — « Laiton & Noyer »
+   --------------------------------------------------------------------------
+   Direction assumée : un club d'échecs, pas un tableau de bord. Fonds chauds
+   (espresso la nuit, ivoire le jour), un seul accent — le laiton d'une
+   pendule de tournoi —, un plateau en noyer, et une serif de titrage.
+
+   Le bleu-violet d'origine a été abandonné : c'est la couleur par défaut de
+   tous les gabarits, elle n'évoque rien, et elle jure avec le bois du
+   plateau. Le laiton tient les deux thèmes et se marie au noyer.
+   ========================================================================== */
+
+/* Fraunces, variable et auto-hébergée.
+   Auto-hébergée parce que l'application doit fonctionner hors ligne et que
+   l'en-tête COEP: require-corp bloque les ressources tierces dépourvues de
+   CORP. Sous-ensemble latin uniquement : le français n'a besoin de rien
+   d'autre (œ est en U+0152-0153, déjà compris). 67 Ko, pré-cachés. */
+@font-face {
+  font-family: 'Fraunces';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/fraunces-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
 @theme {
-  --color-fond: #0b1020;
-  --color-fond-2: #131a30;
-  --color-fond-3: #1b2440;
-  --color-bordure: #27304f;
-  --color-texte: #e8ecf8;
-  --color-texte-doux: #9aa5c4;
-  --color-accent: #6c8cff;
-  --color-accent-fort: #4d70ff;
+  /* --- Fonds et texte, thème sombre par défaut --- */
+  --color-fond: #14120f;
+  --color-fond-2: #1d1a16;
+  --color-fond-3: #282420;
+  --color-bordure: #363029;
+  --color-bordure-forte: #4a4239;
+  --color-texte: #f3ede4;
+  --color-texte-doux: #a79c8d;
+
+  /* --- Accent : laiton --- */
+  --color-accent: #d9a441;
+  --color-accent-fort: #ebb85a;
+  /* Texte posé SUR l'accent. Du blanc sur du laiton tombe à 2,4:1 ;
+     l'encre sombre monte à 7,9:1. */
+  --color-sur-accent: #1a1510;
+  /* Accent très dilué, pour les fonds de sélection. */
+  --color-accent-voile: rgb(217 164 65 / 0.14);
+
+  /* --- Couleurs sémantiques ---
+     Déclinées par thème plus bas : une teinte lisible sur l'espresso est
+     illisible sur l'ivoire. Elles sont exposées en variables plutôt qu'en
+     classes Tailwind figées, justement pour pouvoir basculer. */
+  --color-succes: #4ade80;
+  --color-succes-doux: #86efac;
+  --color-alerte: #fbbf24;
+  --color-orange: #fb923c;
+  --color-danger: #f87171;
+  --color-info: #6fc3c7;
+  --color-rare: #c49be0;
+
+  /* --- Plateau : noyer ---
+     Les DEUX thèmes partagent ces couleurs, et c'est délibéré.
+
+     D'abord parce qu'un échiquier est un objet : son bois ne change pas de
+     teinte selon que la pièce est éclairée ou non, et les applications
+     d'échecs sérieuses traitent le thème du plateau séparément de celui de
+     l'interface.
+
+     Ensuite parce que la reconnaissance locale d'image lit la couleur des
+     pièces par écart à la couleur de la case. Une case claire trop proche du
+     blanc ne laisse plus ressortir que le trait noir des pièces blanches, et
+     toute la rangée des blancs bascule du côté noir. Le jeu clair essayé
+     d'abord (#ead6b4) provoquait exactement cela ; celui-ci laisse la marge
+     nécessaire. `npm run test:assiste` le vérifie de bout en bout. */
+  --color-case-claire: #d8bd99;
+  --color-case-sombre: #8c6242;
+
+  /* --- Rayons --- */
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.375rem;
+
+  /* --- Typographie --- */
+  --font-display: 'Fraunces', 'Iowan Old Style', 'Palatino Linotype', Palatino,
+    Georgia, 'Times New Roman', serif;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', 'Segoe UI Mono',
+    'Roboto Mono', Menlo, Consolas, monospace;
 }
 
 :root {
   color-scheme: dark;
   --hauteur-barre: 3.75rem;
+
+  /* Ombres teintées de la couleur du fond plutôt que du noir pur :
+     une ombre neutre sur un fond chaud vire au gris et salit la carte. */
+  --ombre-carte: 0 1px 2px rgb(10 7 4 / 0.4), 0 6px 20px -8px rgb(10 7 4 / 0.55);
+  --ombre-relief: 0 2px 4px rgb(10 7 4 / 0.45), 0 12px 32px -10px rgb(10 7 4 / 0.7);
+  --ombre-plateau: 0 1px 2px rgb(10 7 4 / 0.5), 0 18px 40px -20px rgb(0 0 0 / 0.85);
+
+  /* Durées : courtes par principe. Une transition d'interface qu'on
+     remarque est une transition trop longue. */
+  --t-rapide: 120ms;
+  --t-normal: 180ms;
+  --t-ample: 260ms;
+  --courbe: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  /* --- Teintes derivees ---------------------------------------------------
+     Ecrites en clair plutot que calculees : la fonction de melange de
+     couleurs CSS n'existe qu'a partir de Safari 16.2 et Chrome 111, alors
+     que l'application vise Safari 15 et Chrome 80 (voir `browserslist`).
+     Une teinte calculee y serait purement et simplement ignoree et le fond
+     deviendrait transparent - exactement le genre de panne qu'on ne voit
+     jamais en developpement. */
+  --voile-accent: rgb(217 164 65 / 0.14);
+  --voile-succes: rgb(74 222 128 / 0.16);
+  --voile-alerte: rgb(251 191 36 / 0.16);
+  --voile-danger: rgb(248 113 113 / 0.14);
+  --voile-info: rgb(111 195 199 / 0.16);
+  --bord-succes: rgb(74 222 128 / 0.4);
+  --bord-alerte: rgb(251 191 36 / 0.4);
+  --bord-danger: rgb(248 113 113 / 0.4);
+  --bord-info: rgb(111 195 199 / 0.4);
+
+  --lueur-fond: rgb(217 164 65 / 0.11);
+
+  /* Surbrillances du plateau. */
+  --case-derniere: rgb(217 164 65 / 0.42);
+  --case-choisie: rgb(217 164 65 / 0.58);
+  --case-precoup: rgb(111 195 199 / 0.45);
+  --bord-plateau: rgb(140 98 66 / 0.55);
+  /* Reperes a1..h8 : ils se posent SUR une case, donc ils contrastent avec
+     elle et non avec le fond de la page. */
+  --coord-sur-claire: #6d4d31;
+  --coord-sur-sombre: #e9d7bd;
+
+  /* Courbe d'evaluation. */
+  --graph-blancs: rgb(216 189 153 / 0.22);
+  --graph-noirs: rgb(140 98 66 / 0.3);
+  --graph-aire: rgb(216 189 153 / 0.45);
 }
 
 :root[data-theme='clair'] {
   color-scheme: light;
-  --color-fond: #f6f7fb;
-  --color-fond-2: #ffffff;
-  --color-fond-3: #eceff7;
-  --color-bordure: #d5dae8;
-  --color-texte: #151a2b;
-  --color-texte-doux: #5b657f;
+  --color-fond: #f4efe6;
+  --color-fond-2: #fffcf6;
+  --color-fond-3: #e9e1d3;
+  --color-bordure: #ddd2c0;
+  --color-bordure-forte: #c4b69f;
+  --color-texte: #1f1b15;
+  --color-texte-doux: #6a6153;
+
+  --color-accent: #8a5a15;
+  --color-accent-fort: #6e4710;
+  --color-sur-accent: #fffbf3;
+  --color-accent-voile: rgb(138 90 21 / 0.1);
+
+  /* Versions assombries : sur l'ivoire, l'émeraude 400 tombe à 1,9:1. */
+  --color-succes: #15803d;
+  --color-succes-doux: #166534;
+  --color-alerte: #a16207;
+  --color-orange: #b45309;
+  --color-danger: #b91c1c;
+  --color-info: #0f6e73;
+  --color-rare: #6d3e96;
+
+  --ombre-carte: 0 1px 2px rgb(94 72 40 / 0.07), 0 4px 16px -6px rgb(94 72 40 / 0.16);
+  --ombre-relief: 0 2px 4px rgb(94 72 40 / 0.1), 0 12px 28px -10px rgb(94 72 40 / 0.26);
+  --ombre-plateau: 0 1px 2px rgb(94 72 40 / 0.14), 0 16px 36px -18px rgb(94 72 40 / 0.45);
+
+  --voile-accent: rgb(138 90 21 / 0.1);
+  --voile-succes: rgb(21 128 61 / 0.12);
+  --voile-alerte: rgb(161 98 7 / 0.13);
+  --voile-danger: rgb(185 28 28 / 0.1);
+  --voile-info: rgb(15 110 115 / 0.12);
+  --bord-succes: rgb(21 128 61 / 0.35);
+  --bord-alerte: rgb(161 98 7 / 0.35);
+  --bord-danger: rgb(185 28 28 / 0.32);
+  --bord-info: rgb(15 110 115 / 0.32);
+
+  --lueur-fond: rgb(138 90 21 / 0.07);
+
+  /* Le plateau ne change pas de couleur d'un thème à l'autre : ses
+     surbrillances et ses repères non plus. Seule la courbe d'évaluation est
+     réaccordée, elle se lit sur le fond de la page et non sur le bois. */
+  --case-derniere: rgb(138 90 21 / 0.42);
+  --case-choisie: rgb(138 90 21 / 0.55);
+
+  --graph-blancs: rgb(216 189 153 / 0.5);
+  --graph-noirs: rgb(140 98 66 / 0.32);
+  --graph-aire: rgb(201 168 122 / 0.5);
 }
 
 html,
@@ -43,18 +213,67 @@ body {
   margin: 0;
   background: var(--color-fond);
   color: var(--color-texte);
-  font-family:
-    system-ui,
-    -apple-system,
-    'Segoe UI',
-    Roboto,
-    'Helvetica Neue',
-    Arial,
-    sans-serif;
+  font-family: var(--font-sans);
   /* Empêche tout défilement horizontal, y compris sur écran de 360 px. */
   overflow-x: hidden;
   -webkit-text-size-adjust: 100%;
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Lueur de fond très diffuse, ancrée en haut : donne de la profondeur à la
+   page sans le dégradé plein écran qui trahit le gabarit. Purement
+   décorative, jamais sous un texte, et fixée pour ne pas défiler. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(70rem 34rem at 50% -14rem, var(--lueur-fond), transparent 70%);
+}
+
+#racine {
+  position: relative;
+  z-index: 1;
+}
+
+/* --- Titrage -------------------------------------------------------------
+   La serif ne sert qu'aux titres. En corps de texte, la sans système reste
+   plus lisible à petite taille et ne coûte rien à télécharger. */
+.titre {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  letter-spacing: -0.015em;
+  line-height: 1.15;
+}
+
+/* Titrage d'écran, seul endroit où la serif prend de l'ampleur. */
+.titre-ecran {
+  font-family: var(--font-display);
+  font-optical-sizing: auto;
+  letter-spacing: -0.022em;
+  line-height: 1.08;
+  font-weight: 600;
+}
+
+/* Intertitre de carte : petites capitales espacées, qui séparent la
+   structure du contenu sans ajouter de trait. */
+.sur-titre {
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--color-texte-doux);
+}
+
+/* Chiffres : toujours tabulaires. Une évaluation qui change de largeur à
+   chaque itération de profondeur fait vibrer la mise en page. */
+.chiffres {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
 }
 
 /* Les gestes de balayage servent à naviguer dans les coups : on désactive
@@ -66,8 +285,8 @@ body {
 
 /* Encoches et barres système. */
 .avec-marges-sures {
-  padding-left: max(0.75rem, env(safe-area-inset-left));
-  padding-right: max(0.75rem, env(safe-area-inset-right));
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
 }
 
 .barre-basse {
@@ -78,6 +297,10 @@ body {
   padding-top: env(safe-area-inset-top);
 }
 
+/* ==========================================================================
+   PLATEAU
+   ========================================================================== */
+
 /* Chessground s'adapte au conteneur ; la taille est pilotée en vmin pour
    que l'échiquier occupe toujours la bonne part de l'écran. */
 .cg-wrap {
@@ -87,64 +310,123 @@ body {
   display: block;
 }
 
-/* Les pièces sont animées par transform uniquement : c'est ce qui garde
-   le glisser-déposer à 60 images par seconde sur mobile d'entrée de gamme. */
-cg-board piece {
-  will-change: transform;
+/* Les cases sombres sont dessinées par un masque SVG plutôt que par un
+   dégradé CSS : `shape-rendering: crispEdges` garantit des arêtes nettes à
+   toutes les tailles, là où un damier en `repeating-conic-gradient` laisse
+   des coutures d'un pixel sur certains moteurs de rendu. Le masque isole
+   les 32 cases en UN seul tracé, ce qui permet de changer leur teinte d'un
+   thème à l'autre sans réécrire quoi que ce soit. */
+cg-board {
+  background-color: var(--color-case-claire);
+  background-image: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-  }
-}
-
-/* Zones tactiles : 44 px minimum, recommandation d'Apple et de Google. */
-.cible-tactile {
-  min-height: 2.75rem;
-  min-width: 2.75rem;
-}
-
-/* Barre d'évaluation verticale. */
-.barre-eval {
-  transition: height 220ms ease-out;
-}
-
-/* Masque les flèches des champs numériques, qui gênent au doigt. */
-input[type='number']::-webkit-outer-spin-button,
-input[type='number']::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-input[type='number'] {
-  -moz-appearance: textfield;
-}
-
-/* Case à faible confiance dans l'écran de correction. */
-.case-douteuse {
-  box-shadow: inset 0 0 0 3px rgba(251, 191, 36, 0.9);
-}
-
-/* Éditeur de position : réutilise les images de pièces de Chessground
-   (les règles ciblent `.cg-wrap piece.<role>.<color>`) tout en annulant
-   le dimensionnement en 12,5 % prévu pour un échiquier complet. */
-.piece-editeur {
-  position: relative;
-  width: 100%;
-  height: 100%;
-}
-.piece-editeur piece {
+cg-board::before {
+  content: '';
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
-  background-size: contain;
-  background-position: center;
-  background-repeat: no-repeat;
-  transform: none;
+  z-index: 0;
+  pointer-events: none;
+  background-color: var(--color-case-sombre);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M1 0h1v1h-1zM3 0h1v1h-1zM5 0h1v1h-1zM7 0h1v1h-1zM0 1h1v1h-1zM2 1h1v1h-1zM4 1h1v1h-1zM6 1h1v1h-1zM1 2h1v1h-1zM3 2h1v1h-1zM5 2h1v1h-1zM7 2h1v1h-1zM0 3h1v1h-1zM2 3h1v1h-1zM4 3h1v1h-1zM6 3h1v1h-1zM1 4h1v1h-1zM3 4h1v1h-1zM5 4h1v1h-1zM7 4h1v1h-1zM0 5h1v1h-1zM2 5h1v1h-1zM4 5h1v1h-1zM6 5h1v1h-1zM1 6h1v1h-1zM3 6h1v1h-1zM5 6h1v1h-1zM7 6h1v1h-1zM0 7h1v1h-1zM2 7h1v1h-1zM4 7h1v1h-1zM6 7h1v1h-1z'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'%3E%3Cpath fill='%23000' d='M1 0h1v1h-1zM3 0h1v1h-1zM5 0h1v1h-1zM7 0h1v1h-1zM0 1h1v1h-1zM2 1h1v1h-1zM4 1h1v1h-1zM6 1h1v1h-1zM1 2h1v1h-1zM3 2h1v1h-1zM5 2h1v1h-1zM7 2h1v1h-1zM0 3h1v1h-1zM2 3h1v1h-1zM4 3h1v1h-1zM6 3h1v1h-1zM1 4h1v1h-1zM3 4h1v1h-1zM5 4h1v1h-1zM7 4h1v1h-1zM0 5h1v1h-1zM2 5h1v1h-1zM4 5h1v1h-1zM6 5h1v1h-1zM1 6h1v1h-1zM3 6h1v1h-1zM5 6h1v1h-1zM7 6h1v1h-1zM0 7h1v1h-1zM2 7h1v1h-1zM4 7h1v1h-1zM6 7h1v1h-1z'/%3E%3C/svg%3E");
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+}
+
+/* Cadre du plateau : un liseré chaud et une ombre portée, pour que
+   l'échiquier se pose sur la page au lieu d'y être collé.
+
+   Volontairement SANS `overflow: hidden` ni coins arrondis. Chessground
+   déplace la pièce saisie par `transform` à l'intérieur de `cg-board` : elle
+   sort du plateau dès qu'on la traîne au-delà d'un bord, et un débordement
+   masqué l'amputerait en plein glisser-déposer. Un plateau à angles droits
+   est de toute façon plus juste — aucun échiquier n'a les coins arrondis. */
+.plateau-cadre {
+  position: relative;
+  box-shadow: var(--ombre-plateau);
+}
+
+.plateau-cadre::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+  /* Liseré intérieur : plus net qu'une bordure, et il ne décale pas la
+     grille des cases d'un pixel. */
+  box-shadow:
+    inset 0 0 0 1px rgb(0 0 0 / 0.28),
+    inset 0 0 0 2px var(--bord-plateau);
+}
+
+/* --- Surbrillances du plateau -------------------------------------------
+   Reprises de `chessground.brown.css`, mais au laiton plutôt qu'au vert
+   pomme : une seule couleur d'interaction dans toute l'application. */
+cg-board square.move-dest {
+  background: radial-gradient(
+    rgb(0 0 0 / 0.26) 21%,
+    rgb(0 0 0 / 0.26) 22%,
+    transparent 22%
+  );
+}
+
+cg-board square.oc.move-dest {
+  background: radial-gradient(transparent 0%, transparent 79%, rgb(0 0 0 / 0.3) 79%);
+}
+
+cg-board square.move-dest:hover {
+  background: rgb(0 0 0 / 0.16);
+}
+
+cg-board square.premove-dest {
+  background: radial-gradient(var(--case-precoup) 21%, var(--case-precoup) 22%, transparent 22%);
+}
+
+cg-board square.last-move {
+  background-color: var(--case-derniere);
+}
+
+cg-board square.selected {
+  background-color: var(--case-choisie);
+}
+
+cg-board square.current-premove {
+  background-color: var(--case-precoup);
+}
+
+/* L'échec reste rouge : c'est le seul endroit où une autre couleur se
+   justifie, parce que l'information est d'une autre nature. */
+cg-board square.check {
+  background: radial-gradient(
+    ellipse at center,
+    rgb(220 38 38 / 0.95) 0%,
+    rgb(200 30 30 / 0.85) 26%,
+    rgb(180 20 20 / 0) 78%
+  );
+}
+
+/* Les pièces sont animées par transform uniquement : c'est ce qui garde
+   le glisser-déposer à 60 images par seconde sur mobile d'entrée de gamme.
+   L'ombre portée suit la silhouette du SVG et décolle la pièce de la case
+   sans la faire flotter. */
+.cg-wrap piece {
+  will-change: transform;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.3));
+}
+
+/* La pièce saisie se soulève. Le retour visuel le plus discret qui soit,
+   et il rend le glisser-déposer lisible au doigt. */
+.cg-wrap piece.dragging {
+  filter: drop-shadow(0 6px 8px rgb(0 0 0 / 0.45));
+}
+
+/* « Animer les pièces » désactivé : l'utilisateur a signalé un appareil
+   lent. On lui retire aussi l'ombre portée, qui force une re-rastérisation
+   de chaque pièce — c'est précisément ce qu'il faut économiser là. */
+.cg-wrap.sans-fioritures piece,
+.cg-wrap.sans-fioritures piece.dragging {
+  filter: none;
 }
 
 /* Coordonnées de l'échiquier.
@@ -169,9 +451,169 @@ input[type='number'] {
 }
 
 .cg-wrap coords coord {
-  font-size: clamp(7px, 1.6vmin, 11px);
-  font-weight: 600;
+  font-size: clamp(8px, 1.7vmin, 11px);
+  font-weight: 700;
   line-height: 1;
+  font-family: var(--font-mono);
+  /* Chessground met les colonnes en capitales. L'application écrit les
+     coups en notation algébrique — « e4 », jamais « E4 » — et lire « E »
+     sur le plateau juste à côté de « e4 » dans la liste des coups était
+     une discordance inutile. */
+  text-transform: lowercase;
+}
+
+/* Le repère se pose SUR une case : il doit contraster avec celle-ci, pas
+   avec le fond de la page. D'où deux teintes, dérivées des cases. */
+.orientation-white .ranks :nth-child(odd),
+.orientation-white .files :nth-child(even),
+.orientation-black .ranks :nth-child(even),
+.orientation-black .files :nth-child(odd) {
+  color: var(--coord-sur-claire);
+}
+
+.orientation-white .ranks :nth-child(even),
+.orientation-white .files :nth-child(odd),
+.orientation-black .ranks :nth-child(odd),
+.orientation-black .files :nth-child(even) {
+  color: var(--coord-sur-sombre);
+}
+
+/* Flèche du meilleur coup : apparition en fondu.
+   Chessground recrée le groupe SVG à chaque changement de flèche ; sans
+   transition, le passage d'un coup à l'autre se voit comme un clignotement.
+   La flèche n'étant redessinée que lorsque le coup change VRAIMENT, ce
+   fondu ne se déclenche pas à chaque itération de profondeur. */
+.cg-wrap .cg-shapes g {
+  animation: fleche-apparait var(--t-normal) var(--courbe);
+}
+
+@keyframes fleche-apparait {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ==========================================================================
+   MICRO-ANIMATIONS
+   Une règle : aucune n'excède 260 ms, aucune ne décale la mise en page.
+   ========================================================================== */
+
+/* Entrée d'écran. Opacité et 6 px de translation : au-delà, on regarde
+   l'animation au lieu du contenu. */
+@keyframes ecran-entre {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 6px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ecran-entre {
+  animation: ecran-entre var(--t-ample) var(--courbe) both;
+}
+
+/* Apparition d'un panneau (verdict, fin de partie) : même grammaire. */
+@keyframes panneau-entre {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 8px, 0) scale(0.995);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.panneau-entre {
+  animation: panneau-entre var(--t-ample) var(--courbe) both;
+}
+
+@keyframes voile-entre {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.voile-entre {
+  animation: voile-entre var(--t-normal) ease-out both;
+}
+
+/* Squelette de chargement : réserve la place exacte du contenu à venir,
+   ce qui supprime le décalage de mise en page au moment où il arrive. */
+@keyframes squelette-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+.squelette {
+  background: var(--color-fond-3);
+  border-radius: var(--radius-sm);
+  animation: squelette-pulse 1.4s ease-in-out infinite;
+}
+
+/* Indicateur d'activité du moteur : trois points, pas un disque qui tourne.
+   Le disque suggère une attente longue ; le moteur répond en une seconde. */
+@keyframes points-reflechit {
+  0%,
+  80%,
+  100% {
+    opacity: 0.25;
+    transform: translateY(0);
+  }
+  40% {
+    opacity: 1;
+    transform: translateY(-2px);
+  }
+}
+
+.point-reflechit {
+  animation: points-reflechit 1.1s ease-in-out infinite;
+}
+
+/* ==========================================================================
+   CONTRÔLES
+   ========================================================================== */
+
+/* Zones tactiles : 44 px minimum, recommandation d'Apple et de Google. */
+.cible-tactile {
+  min-height: 2.75rem;
+  min-width: 2.75rem;
+}
+
+/* Un anneau de focus unique, visible sur les deux thèmes, et qui ne
+   déplace jamais l'élément. */
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Barre d'évaluation verticale. */
+.barre-eval {
+  transition: height var(--t-ample) var(--courbe);
+}
+
+/* Masque les flèches des champs numériques, qui gênent au doigt. */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
 }
 
 /* Curseurs : la piste par défaut du navigateur reste très sombre en thème
@@ -206,7 +648,8 @@ input[type='range']::-webkit-slider-thumb {
   border-radius: 999px;
   background: var(--color-accent);
   border: 2px solid var(--color-fond-2);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  box-shadow: var(--ombre-carte);
+  transition: transform var(--t-rapide) var(--courbe);
 }
 
 input[type='range']::-moz-range-thumb {
@@ -215,12 +658,20 @@ input[type='range']::-moz-range-thumb {
   border-radius: 999px;
   background: var(--color-accent);
   border: 2px solid var(--color-fond-2);
-  box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+  box-shadow: var(--ombre-carte);
 }
 
-input[type='range']:focus-visible::-webkit-slider-thumb {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+input[type='range']:active::-webkit-slider-thumb {
+  transform: scale(1.12);
+}
+
+/* ==========================================================================
+   ÉCRAN DE CORRECTION (reconnaissance d'image)
+   ========================================================================== */
+
+/* Case à faible confiance dans l'écran de correction. */
+.case-douteuse {
+  box-shadow: inset 0 0 0 3px rgb(251 191 36 / 0.9);
 }
 
 /* Case dont l'effectif est arithmétiquement impossible : plus insistant que
@@ -228,29 +679,43 @@ input[type='range']:focus-visible::-webkit-slider-thumb {
    distingue « à vérifier » de « impossible ». */
 .case-impossible {
   box-shadow:
-    inset 0 0 0 3px rgba(249, 115, 22, 0.95),
-    inset 0 0 0 6px rgba(249, 115, 22, 0.35);
+    inset 0 0 0 3px rgb(249 115 22 / 0.95),
+    inset 0 0 0 6px rgb(249 115 22 / 0.35);
 }
 
-/* Flèche du meilleur coup : apparition en fondu.
-   Chessground recrée le groupe SVG à chaque changement de flèche ; sans
-   transition, le passage d'un coup à l'autre se voit comme un clignotement.
-   La flèche n'étant redessinée que lorsque le coup change VRAIMENT, ce
-   fondu ne se déclenche pas à chaque itération de profondeur. */
-.cg-wrap .cg-shapes g {
-  animation: fleche-apparait 160ms ease-out;
+/* Éditeur de position : réutilise les images de pièces de Chessground
+   (les règles ciblent `.cg-wrap piece.<role>.<color>`) tout en annulant
+   le dimensionnement en 12,5 % prévu pour un échiquier complet. */
+.piece-editeur {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+.piece-editeur piece {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  transform: none;
+  filter: none;
 }
 
-@keyframes fleche-apparait {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
+/* ==========================================================================
+   PRÉFÉRENCE SYSTÈME : MOUVEMENT RÉDUIT
+   ========================================================================== */
 @media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
   .cg-wrap .cg-shapes g {
     animation: none;
   }

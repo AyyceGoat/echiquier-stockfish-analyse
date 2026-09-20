@@ -13,9 +13,13 @@ import { deflateSync } from 'node:zlib';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-const FOND = [0x0b, 0x10, 0x20];
-const CASE_CLAIRE = [0xe8, 0xec, 0xf8];
-const CASE_SOMBRE = [0x6c, 0x8c, 0xff];
+// Palette « Laiton & Noyer », identique a celle de l'application.
+const FOND = [0x14, 0x12, 0x0f];
+const CASE_CLAIRE = [0xe8, 0xd3, 0xb0];
+const CASE_SOMBRE = [0x8c, 0x62, 0x42];
+// Liseré de laiton autour du plateau : c'est lui qui rend l'icône
+// reconnaissable en 48 px, là où un damier seul se lit comme une grille.
+const LISERE = [0xd9, 0xa4, 0x41];
 
 function crc32(buf) {
   let c;
@@ -83,6 +87,13 @@ function dessiner(taille, marge) {
   for (let y = 0; y < taille; y++) {
     for (let x = 0; x < taille; x++) {
       let couleur = FOND;
+      const epaisseur = Math.max(1, Math.round(taille * 0.018));
+      const dansLisere =
+        x >= bord - epaisseur &&
+        x < bord + plateau + epaisseur &&
+        y >= bord - epaisseur &&
+        y < bord + plateau + epaisseur;
+      if (dansLisere) couleur = LISERE;
       if (x >= bord && x < bord + plateau && y >= bord && y < bord + plateau) {
         const col = Math.floor((x - bord) / cote);
         const lig = Math.floor((y - bord) / cote);

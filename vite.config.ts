@@ -14,7 +14,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'prompt',
       injectRegister: null,
-      includeAssets: ['favicon.svg', 'icons/*.png'],
+      includeAssets: ['favicon.svg', 'icons/*.png', 'fonts/*.woff2'],
       manifest: {
         name: 'Échiquier — Stockfish & Analyse',
         short_name: 'Échiquier',
@@ -25,8 +25,8 @@ export default defineConfig({
         scope: '/',
         display: 'standalone',
         orientation: 'any',
-        background_color: '#0b1020',
-        theme_color: '#0b1020',
+        background_color: '#14120f',
+        theme_color: '#14120f',
         categories: ['games', 'education'],
         icons: [
           { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
@@ -55,11 +55,6 @@ export default defineConfig({
               cacheableResponse: { statuses: [0, 200] },
               rangeRequests: true,
             },
-          },
-          {
-            urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\//,
-            handler: 'StaleWhileRevalidate',
-            options: { cacheName: 'polices' },
           },
         ],
       },
