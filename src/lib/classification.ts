@@ -110,14 +110,22 @@ export const SYMBOLES: Record<Classement, string> = {
 };
 
 /** Couleur (classe Tailwind) associée à chaque classement. */
+/**
+ * Couleur de chaque classement, en VALEUR CSS et non en classe Tailwind.
+ *
+ * Les classes figées (`text-emerald-400`) ne suivaient pas le thème : sur
+ * l'ivoire du thème clair, cet émeraude tombe à 1,9:1, très en dessous du
+ * minimum lisible. Les variables, elles, sont redéfinies par thème.
+ * À utiliser en `style={{ color: COULEURS[c] }}`.
+ */
 export const COULEURS: Record<Classement, string> = {
-  theorie: 'text-sky-400',
-  unique: 'text-violet-400',
-  excellent: 'text-emerald-400',
-  bon: 'text-emerald-300',
-  imprecision: 'text-amber-400',
-  erreur: 'text-orange-400',
-  gaffe: 'text-red-500',
+  theorie: 'var(--color-info)',
+  unique: 'var(--color-rare)',
+  excellent: 'var(--color-succes)',
+  bon: 'var(--color-succes-doux)',
+  imprecision: 'var(--color-alerte)',
+  erreur: 'var(--color-orange)',
+  gaffe: 'var(--color-danger)',
 };
 
 /**
