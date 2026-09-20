@@ -6,12 +6,8 @@
  * Fait UN seul appel au modèle : c'est une vérification, pas une campagne.
  */
 import puppeteer from 'puppeteer-core';
-import { existsSync } from 'node:fs';
+import { optionsLancement, trouverNavigateur } from './navigateur.mjs';
 
-const CHEMINS = [
-  'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-  'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
-];
 const BASE = process.argv[2] ?? 'https://echiquier-stockfish-analyse.netlify.app';
 const ATTENDU = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR';
 
@@ -21,7 +17,7 @@ const verifier = (ok, l, d = '') => {
   if (!ok) echecs += 1;
 };
 
-const b = await puppeteer.launch({ executablePath: CHEMINS.find(existsSync), headless: 'new', args: ['--no-sandbox'] });
+const b = await puppeteer.launch(optionsLancement());
 const page = await b.newPage();
 await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
 const erreurs = [];

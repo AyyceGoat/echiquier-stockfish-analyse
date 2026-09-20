@@ -14,13 +14,8 @@
  */
 
 import puppeteer from 'puppeteer-core';
-import { existsSync } from 'node:fs';
+import { optionsLancement, trouverNavigateur } from './navigateur.mjs';
 
-const CHEMINS = [
-  'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-  'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
-  'C:/Program Files/Google/Chrome/Application/chrome.exe',
-];
 const BASE = process.argv[2] ?? 'http://localhost:4173';
 const DEMI_COUPS = 30;
 
@@ -38,11 +33,7 @@ const verifier = (ok, l, d = '') => {
   if (!ok) echecs += 1;
 };
 
-const navigateur = await puppeteer.launch({
-  executablePath: CHEMINS.find(existsSync),
-  headless: 'new',
-  args: ['--no-sandbox'],
-});
+const navigateur = await puppeteer.launch(optionsLancement());
 const page = await navigateur.newPage();
 page.on('pageerror', (e) => console.log('[pageerror]', String(e?.message ?? e).slice(0, 160)));
 await page.goto(`${BASE}/#/`, { waitUntil: 'networkidle2' });

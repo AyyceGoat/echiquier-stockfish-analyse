@@ -4,13 +4,8 @@
  * progression se conserve d'une visite à l'autre.
  */
 import puppeteer from 'puppeteer-core';
-import { existsSync } from 'node:fs';
+import { optionsLancement, trouverNavigateur } from './navigateur.mjs';
 
-const CHEMINS = [
-  'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-  'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
-  'C:/Program Files/Google/Chrome/Application/chrome.exe',
-];
 const BASE = process.argv[2] ?? 'http://localhost:4173';
 
 let echecs = 0;
@@ -19,11 +14,7 @@ const verifier = (ok, l, d = '') => {
   if (!ok) echecs += 1;
 };
 
-const navigateur = await puppeteer.launch({
-  executablePath: CHEMINS.find(existsSync),
-  headless: 'new',
-  args: ['--no-sandbox'],
-});
+const navigateur = await puppeteer.launch(optionsLancement());
 const page = await navigateur.newPage();
 await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
 

@@ -9,14 +9,8 @@
  */
 
 import puppeteer from 'puppeteer-core';
-import { existsSync } from 'node:fs';
 import { mkdirSync } from 'node:fs';
-
-const CHEMINS_NAVIGATEUR = [
-  'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-  'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-];
+import { optionsLancement, trouverNavigateur } from './navigateur.mjs';
 
 const BASE = process.argv[2] ?? 'http://localhost:4173';
 const SORTIE = 'captures';
@@ -56,12 +50,6 @@ async function cliquerBouton(page, predicat) {
   }, predicat);
 }
 
-const executablePath = CHEMINS_NAVIGATEUR.find((c) => existsSync(c));
-if (!executablePath) {
-  console.error('Aucun navigateur Chromium trouvé.');
-  process.exit(1);
-}
-
 mkdirSync(SORTIE, { recursive: true });
 
 let echecs = 0;
@@ -70,11 +58,8 @@ const verifier = (ok, libelle, detail = '') => {
   if (!ok) echecs += 1;
 };
 
-const navigateur = await puppeteer.launch({
-  executablePath,
-  headless: 'new',
-  args: ['--no-sandbox', '--disable-dev-shm-usage'],
-});
+console.log('Navigateur :', trouverNavigateur());
+const navigateur = await puppeteer.launch(optionsLancement());
 
 try {
   for (const format of FORMATS) {

@@ -4,15 +4,10 @@
  * l'analyse incrémentale se déroule jusqu'au bout avec un résultat cohérent.
  */
 import puppeteer from 'puppeteer-core';
-import { existsSync } from 'node:fs';
+import { optionsLancement, trouverNavigateur } from './navigateur.mjs';
 
-const CHEMINS = [
-  'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-  'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
-  'C:/Program Files/Google/Chrome/Application/chrome.exe',
-];
 const BASE = process.argv[2] ?? 'http://localhost:4173';
-const executablePath = CHEMINS.find(existsSync);
+const executablePath = trouverNavigateur();
 
 let echecs = 0;
 const verifier = (ok, libelle, detail = '') => {
@@ -81,7 +76,9 @@ const resultat = await page.evaluate(() => {
   return {
     precisions: [...t.matchAll(/(\d+,\d)\s?%/g)].map((m) => m[1]),
     gaffe: t.includes('Gaffe'),
-    momentsCles: t.includes('Moments charnières'),
+    // Insensible à la casse : les intitulés de section sont affichés en
+    // petites capitales, et `innerText` rend le texte tel qu'il s'affiche.
+    momentsCles: /moments charnières/i.test(t),
     ouverture: /C\d\d|B\d\d|A\d\d|D\d\d|E\d\d/.test(t),
     nbCoupsListes: document.querySelectorAll('ol li').length,
   };

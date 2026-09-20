@@ -5,13 +5,8 @@
  * - fabrique une capture d'échiquier et la passe à la reconnaissance locale.
  */
 import puppeteer from 'puppeteer-core';
-import { existsSync } from 'node:fs';
+import { optionsLancement, trouverNavigateur } from './navigateur.mjs';
 
-const CHEMINS = [
-  'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe',
-  'C:/Program Files/Microsoft/Edge/Application/msedge.exe',
-  'C:/Program Files/Google/Chrome/Application/chrome.exe',
-];
 const BASE = process.argv[2] ?? 'http://localhost:4173';
 let echecs = 0;
 const verifier = (ok, l, d = '') => {
@@ -19,11 +14,7 @@ const verifier = (ok, l, d = '') => {
   if (!ok) echecs += 1;
 };
 
-const navigateur = await puppeteer.launch({
-  executablePath: CHEMINS.find(existsSync),
-  headless: 'new',
-  args: ['--no-sandbox'],
-});
+const navigateur = await puppeteer.launch(optionsLancement());
 const page = await navigateur.newPage();
 await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
 const erreurs = [];
@@ -118,21 +109,26 @@ for (let essai = 1; essai <= 2 && !coupJoue; essai++) {
   if (!coupJoue) await new Promise((r) => setTimeout(r, 1500));
 }
 verifier(coupJoue, 'Le coup a été enregistré sur l’échiquier');
-await page.waitForFunction(() => document.body.innerText.includes('Votre coup'), {
+// Comparaison insensible à la casse : les intitulés de section sont rendus
+// en petites capitales par CSS, et `innerText` renvoie le texte TEL QU'AFFICHÉ
+// — donc « VOTRE COUP ». C'est la présence du panneau qu'on teste, pas sa casse.
+await page.waitForFunction(() => /votre coup/i.test(document.body.innerText), {
   timeout: 30000,
   polling: 500,
 });
 await page.waitForFunction(
   () =>
-    /Excellent|Bon|Imprécision|Erreur|Gaffe|Coup de théorie|Coup unique/.test(document.body.innerText) &&
-    !document.body.innerText.includes('Évaluation en cours'),
+    /Excellent|Bon|Imprécision|Erreur|Gaffe|Coup de théorie|Coup unique/i.test(
+      document.body.innerText,
+    ) && !/évaluation du coup/i.test(document.body.innerText),
   { timeout: 120000, polling: 500 },
 );
 
 const verdict = await page.evaluate(() => {
   const t = document.body.innerText;
   return {
-    classement: (t.match(/Votre coup\s*\n\s*(\S[^\n]*)/) ?? [])[1] ?? '',
+    // Insensible à la casse : l'intitulé s'affiche en petites capitales.
+    classement: (t.match(/votre coup\s*\n\s*(\S[^\n]*)/i) ?? [])[1] ?? '',
     aReprendre: t.includes('Reprendre'),
     aPertePionAberrante: /\d{2,},\d\d\s*pion/.test(t),
     nbCoups: document.querySelectorAll('ol li').length,
@@ -218,11 +214,10 @@ await page.evaluate(async (url) => {
   cible.dispatchEvent(new Event('change', { bubbles: true }));
 }, dataUrl);
 
+// Insensible à la casse, comme plus haut : « Vérifier la position » est un
+// intitulé de section, donc rendu en petites capitales.
 await page.waitForFunction(
-  () =>
-    document.body.innerText.includes('Vérifier la position') ||
-    document.body.innerText.includes('échoué') ||
-    document.body.innerText.includes('détecté'),
+  () => /vérifier la position|échoué|détecté/i.test(document.body.innerText),
   { timeout: 60000, polling: 500 },
 );
 
@@ -230,7 +225,7 @@ const corr = await page.evaluate(() => {
   const t = document.body.innerText;
   const cases = [...document.querySelectorAll('[role="grid"] button')];
   return {
-    arrive: t.includes('Vérifier la position'),
+    arrive: /vérifier la position/i.test(t),
     occupees: cases.filter((b) => b.querySelector('piece')).length,
     aFen: /\/.*\/.*\s[wb]\s/.test(t),
     douteuses: (t.match(/(\d+) cases? à vérifier/) ?? [])[1],
