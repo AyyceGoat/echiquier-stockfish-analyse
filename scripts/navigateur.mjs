@@ -14,7 +14,9 @@
  * `executablePath` indéfini.
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 const CHEMINS = [
   'C:/Program Files (x86)/Google/Chrome/Application/new_chrome.exe',
@@ -38,15 +40,24 @@ export function trouverNavigateur() {
 /**
  * Options de lancement communes.
  *
- * `userDataDir` est imposé : sans profil dédié, le lanceur de Chrome
- * délègue à la fenêtre déjà ouverte de l'utilisateur au lieu de démarrer
- * une instance pilotable.
+ * `userDataDir` est imposé, pour deux raisons cumulées :
+ *
+ *  - sans profil explicite, le lanceur de Chrome délègue à la fenêtre déjà
+ *    ouverte de l'utilisateur au lieu de démarrer une instance pilotable ;
+ *  - le profil doit être NEUF à chaque lancement. Un dossier fixe conservait
+ *    le `localStorage` d'un scénario à l'autre : `test-interactions` laissait
+ *    le thème sur « clair » et le scénario suivant échouait sur « mode sombre
+ *    par défaut », de façon intermittente et selon l'ordre d'exécution.
+ *
+ * Le dossier temporaire est laissé au système, qui le nettoiera : le
+ * supprimer ici obligerait chaque appelant à fermer proprement le navigateur
+ * avant de rendre la main.
  */
 export function optionsLancement(extra = {}) {
   return {
     executablePath: trouverNavigateur(),
     headless: 'new',
-    userDataDir: 'C:/Users/Public/.echiquier-profil-tests',
+    userDataDir: mkdtempSync(join(tmpdir(), 'echiquier-profil-')),
     args: ['--no-sandbox', '--disable-dev-shm-usage', '--no-first-run'],
     ...extra,
   };
