@@ -1,31 +1,33 @@
 /**
- * Vérifie que le réglage de niveau est RÉELLEMENT appliqué au moteur.
+ * Vérifie que le réglage de niveau est RÉELLEMENT appliqué, et mesure la
+ * qualité de jeu de chaque palier.
  *
  * Méthode : à chaque palier, le moteur joue contre lui-même une trentaine de
- * demi-coups, puis chaque coup est réévalué à pleine force pour mesurer sa
- * perte en centipions. Un palier « Débutant » doit produire des erreurs
- * grossières ; « Maximum » ne doit pratiquement pas en produire.
+ * demi-coups EN PASSANT PAR LA MÊME SÉLECTION DE COUP QUE LE JEU — options
+ * UCI du palier, MultiPV, puis tirage pondéré de `choisirCoup`. Chaque coup
+ * est ensuite réévalué à pleine force pour mesurer sa perte en centipions.
  *
- * Si le plus bas niveau ne commet aucune bourde, c'est que le réglage n'est
- * pas transmis — exactement le symptôme qu'on cherche à interdire.
+ * Deux dettes corrigées ici :
  *
- * La table ci-dessous doit rester alignée sur `src/lib/niveaux.ts` ; les
- * valeurs y sont figées par les tests unitaires.
+ *  - la table des paliers était RECOPIÉE dans ce script, avec un commentaire
+ *    demandant de la garder alignée sur `src/lib/niveaux.ts`. Elle ne l'était
+ *    plus. Elle est désormais importée depuis le module du jeu.
+ *  - la mesure ne passait que par les options UCI. Or, sous 1320 Elo, c'est
+ *    le tirage pondéré côté application qui porte l'essentiel de la
+ *    différence : mesurer sans lui, c'était mesurer autre chose que ce que
+ *    le joueur affronte.
+ *
+ * Le harnais tourne contre le serveur de DÉVELOPPEMENT : il a besoin des
+ * modules sources pour importer la logique de choix telle qu'elle est écrite.
+ *
+ * Usage : node scripts/test-niveaux.mjs [url]
  */
 
 import puppeteer from 'puppeteer-core';
-import { optionsLancement, trouverNavigateur } from './navigateur.mjs';
+import { optionsLancement } from './navigateur.mjs';
 
-const BASE = process.argv[2] ?? 'http://localhost:4173';
+const BASE = process.argv[2] ?? 'http://localhost:5173';
 const DEMI_COUPS = 30;
-
-const TABLE = {
-  debutant: { skill: 0, limiterElo: true, uciElo: 1320, profondeurMax: 1, tempsMs: 50 },
-  amateur: { skill: 3, limiterElo: true, uciElo: 1320, profondeurMax: 3, tempsMs: 100 },
-  club: { skill: 9, limiterElo: true, uciElo: 1600, profondeurMax: 8, tempsMs: 200 },
-  maximum: { skill: 20, limiterElo: false, profondeurMax: null, tempsMs: 1000 },
-};
-const PALIERS = Object.keys(TABLE);
 
 let echecs = 0;
 const verifier = (ok, l, d = '') => {
@@ -33,85 +35,123 @@ const verifier = (ok, l, d = '') => {
   if (!ok) echecs += 1;
 };
 
-const navigateur = await puppeteer.launch(optionsLancement());
+// Une mesure de palier entière peut dépasser le délai de protocole par
+// défaut de Puppeteer, qui couperait la connexion au milieu sans rien rendre.
+const navigateur = await puppeteer.launch(optionsLancement({ protocolTimeout: 900_000 }));
 const page = await navigateur.newPage();
-page.on('pageerror', (e) => console.log('[pageerror]', String(e?.message ?? e).slice(0, 160)));
-await page.goto(`${BASE}/#/`, { waitUntil: 'networkidle2' });
-await page.waitForSelector('h1');
+page.on('pageerror', (e) => console.log('[pageerror]', String(e?.message ?? e).slice(0, 200)));
+await page.goto(`${BASE}/#/`, { waitUntil: 'networkidle2', timeout: 60000 });
+await page.waitForSelector('h1', { timeout: 30000 });
 
-/** Joue une partie du moteur contre lui-même, puis mesure la perte par coup. */
-function mesurer(config) {
-  return page.evaluate(
-    async (cfg, demiCoups) => {
-      // --- Petit pilote UCI, volontairement minimal ---
-      const ouvrir = () =>
-        new Promise((resoudre, rejeter) => {
-          const w = new Worker('/engine/sf19/worker-sf19.js?hash=32&threads=1', {
-            type: 'module',
+/** Installe le pilote UCI et les modules du jeu dans la page. */
+await page.evaluate(async () => {
+  window.__banc = await import('/src/lib/bancEssai.ts');
+
+  window.__ouvrirMoteur = () =>
+    new Promise((resoudre, rejeter) => {
+      const w = new Worker('/engine/sf19/worker-sf19.js?hash=32&threads=1', { type: 'module' });
+      let surLigne = null;
+      let pret = false;
+      w.onerror = (e) => rejeter(new Error(e.message || 'échec du worker'));
+      w.onmessage = (ev) => {
+        const s = String(ev.data);
+        if (surLigne) surLigne(s);
+        if (!pret && s.includes('uciok')) {
+          pret = true;
+          resoudre({
+            envoyer: (c) => w.postMessage(c),
+            jusquAuBestmove: () =>
+              new Promise((res) => {
+                const lignes = new Map();
+                let dernierScore = null;
+                surLigne = (ligne) => {
+                  const mp = ligne.match(/multipv (\d+)/);
+                  const sc = ligne.match(/score (cp|mate) (-?\d+)/);
+                  const pv = ligne.match(/ pv ([a-h][1-8][a-h][1-8][qrbn]?)/);
+                  if (sc) {
+                    const brut =
+                      sc[1] === 'cp'
+                        ? Number(sc[2])
+                        : (Number(sc[2]) > 0 ? 1 : -1) * (10000 - Math.abs(Number(sc[2])) * 10);
+                    if (!mp || Number(mp[1]) === 1) dernierScore = brut;
+                  }
+                  if (sc && pv) {
+                    lignes.set(mp ? Number(mp[1]) : 1, {
+                      coup: pv[1],
+                      evaluation:
+                        sc[1] === 'cp'
+                          ? { type: 'cp', valeur: Number(sc[2]) }
+                          : { type: 'mat', valeur: Number(sc[2]) },
+                    });
+                  }
+                  if (ligne.startsWith('bestmove')) {
+                    surLigne = null;
+                    res({
+                      bestmove: ligne.split(' ')[1],
+                      candidats: [...lignes.values()],
+                      score: dernierScore,
+                    });
+                  }
+                };
+              }),
+            fermer: () => w.terminate(),
           });
-          let surLigne = null;
-          let pret = false;
-          w.onerror = (e) => rejeter(new Error(e.message || 'échec du worker'));
-          w.onmessage = (ev) => {
-            const s = String(ev.data);
-            if (surLigne) surLigne(s);
-            if (!pret && s.includes('uciok')) {
-              pret = true;
-              resoudre({
-                envoyer: (c) => w.postMessage(c),
-                /** Attend `bestmove` en retenant le dernier score annoncé. */
-                jusquAuBestmove: () =>
-                  new Promise((res) => {
-                    let score = null;
-                    surLigne = (ligne) => {
-                      const m = ligne.match(/score (cp|mate) (-?\d+)/);
-                      if (m) {
-                        score =
-                          m[1] === 'cp'
-                            ? Number(m[2])
-                            : (Number(m[2]) > 0 ? 1 : -1) *
-                              (10000 - Math.abs(Number(m[2])) * 10);
-                      }
-                      if (ligne.startsWith('bestmove')) {
-                        surLigne = null;
-                        res({ coup: ligne.split(' ')[1], score });
-                      }
-                    };
-                  }),
-                fermer: () => w.terminate(),
-              });
-            }
-          };
-          w.postMessage('uci');
-        });
+        }
+      };
+      w.postMessage('uci');
+    });
 
-      const m = await ouvrir();
+  window.__moteurUnique = null;
+  window.__moteurPartage = async () => {
+    if (!window.__moteurUnique) window.__moteurUnique = await window.__ouvrirMoteur();
+    return window.__moteurUnique;
+  };
+});
+
+const paliers = await page.evaluate(() =>
+  window.__banc.NIVEAUX.map((n) => ({ id: n.id, libelle: n.libelle, elo: n.elo })),
+);
+
+/** Fait jouer un palier contre lui-même, puis mesure la perte par coup. */
+function mesurer(id, demiCoups) {
+  return page.evaluate(
+    async (id, demiCoups) => {
+      const { choisirCoup, niveauParId } = window.__banc;
+      const n = niveauParId(id);
+      const m = await window.__moteurPartage();
+
       m.envoyer('setoption name Hash value 32');
       m.envoyer('ucinewgame');
-
-      // --- 1. Le moteur joue contre lui-même, au palier testé ---
-      if (cfg.limiterElo && cfg.uciElo) {
+      m.envoyer(`setoption name MultiPV value ${n.candidats}`);
+      if (n.limiterElo && n.uciElo) {
         m.envoyer('setoption name UCI_LimitStrength value true');
-        m.envoyer(`setoption name UCI_Elo value ${cfg.uciElo}`);
+        m.envoyer(`setoption name UCI_Elo value ${n.uciElo}`);
       } else {
         m.envoyer('setoption name UCI_LimitStrength value false');
       }
-      m.envoyer(`setoption name Skill Level value ${cfg.skill}`);
+      m.envoyer(`setoption name Skill Level value ${n.skill}`);
 
-      const commande = cfg.profondeurMax
-        ? `go depth ${cfg.profondeurMax} movetime ${cfg.tempsMs}`
-        : `go movetime ${cfg.tempsMs}`;
+      const commande = n.profondeurMax
+        ? `go depth ${n.profondeurMax} movetime ${n.tempsMs}`
+        : `go movetime ${n.tempsMs}`;
 
+      // --- 1. Le palier joue contre lui-même, sélection du jeu comprise ---
       const coups = [];
       for (let i = 0; i < demiCoups; i++) {
         m.envoyer(`position startpos${coups.length ? ' moves ' + coups.join(' ') : ''}`);
         m.envoyer(commande);
-        const { coup } = await m.jusquAuBestmove();
-        if (!coup || coup === '(none)' || coup === '0000') break;
-        coups.push(coup);
+        const { bestmove, candidats } = await m.jusquAuBestmove();
+        const choisi =
+          choisirCoup(candidats, {
+            temperatureCp: n.temperatureCp,
+            probaBevue: n.probaBevue,
+          }) ?? bestmove;
+        if (!choisi || choisi === '(none)' || choisi === '0000') break;
+        coups.push(choisi);
       }
 
       // --- 2. Réévaluation de chaque position à pleine force ---
+      m.envoyer('setoption name MultiPV value 1');
       m.envoyer('setoption name UCI_LimitStrength value false');
       m.envoyer('setoption name Skill Level value 20');
       m.envoyer('ucinewgame');
@@ -133,27 +173,27 @@ function mesurer(config) {
         pertes.push(Math.max(0, scores[i] - -scores[i + 1]));
       }
 
-      m.fermer();
       return {
         coups: coups.length,
-        moyenne: pertes.length
-          ? Math.round(pertes.reduce((a, b) => a + b, 0) / pertes.length)
-          : 0,
+        moyenne: pertes.length ? Math.round(pertes.reduce((a, b) => a + b, 0) / pertes.length) : 0,
         grossieres: pertes.filter((p) => p >= 200).length,
         pire: pertes.length ? Math.round(Math.max(...pertes)) : 0,
       };
     },
-    config,
-    DEMI_COUPS,
+    id,
+    demiCoups,
   );
 }
 
+console.log(`Qualité de jeu par palier — ${DEMI_COUPS} demi-coups, sélection du jeu comprise.\n`);
+
 const resultats = {};
-for (const palier of PALIERS) {
-  resultats[palier] = await mesurer(TABLE[palier]);
-  const r = resultats[palier];
+for (const p of paliers) {
+  resultats[p.id] = await mesurer(p.id, DEMI_COUPS);
+  const r = resultats[p.id];
   console.log(
-    `  ${palier.padEnd(9)} coups=${String(r.coups).padStart(2)}` +
+    `  ${p.libelle.padEnd(15)} ${String(p.elo ?? 'max').padStart(4)}` +
+      `  coups=${String(r.coups).padStart(2)}` +
       `  perte moyenne=${String(r.moyenne).padStart(4)} cp` +
       `  bourdes=${String(r.grossieres).padStart(2)}` +
       `  pire=${String(r.pire).padStart(5)} cp`,
@@ -162,14 +202,19 @@ for (const palier of PALIERS) {
 console.log('');
 
 verifier(
-  resultats.debutant.grossieres >= 3,
-  'Le niveau Débutant commet bien des erreurs grossières',
-  `${resultats.debutant.grossieres} coups perdant 200 cp ou plus`,
+  resultats['grand-debutant'].grossieres >= 3,
+  'Le palier Grand débutant commet bien des erreurs grossières',
+  `${resultats['grand-debutant'].grossieres} coups perdant 200 cp ou plus`,
 );
 verifier(
-  resultats.debutant.moyenne > resultats.maximum.moyenne,
-  'Débutant joue nettement moins bien que Maximum',
-  `${resultats.debutant.moyenne} cp contre ${resultats.maximum.moyenne} cp`,
+  resultats.debutant.grossieres >= 2,
+  'Le palier Débutant commet des erreurs grossières',
+  `${resultats.debutant.grossieres}`,
+);
+verifier(
+  resultats['grand-debutant'].moyenne > resultats.debutant.moyenne,
+  'Grand débutant joue moins bien que Débutant',
+  `${resultats['grand-debutant'].moyenne} cp contre ${resultats.debutant.moyenne} cp`,
 );
 verifier(
   resultats.debutant.moyenne > resultats.club.moyenne,
@@ -177,8 +222,13 @@ verifier(
   `débutant ${resultats.debutant.moyenne} > club ${resultats.club.moyenne}`,
 );
 verifier(
+  resultats.debutant.moyenne > resultats.maximum.moyenne,
+  'Débutant joue nettement moins bien que Maximum',
+  `${resultats.debutant.moyenne} cp contre ${resultats.maximum.moyenne} cp`,
+);
+verifier(
   resultats.maximum.grossieres <= 1,
-  'Le niveau Maximum ne commet pratiquement pas de bourde',
+  'Le palier Maximum ne commet pratiquement pas de bourde',
   `${resultats.maximum.grossieres}`,
 );
 
