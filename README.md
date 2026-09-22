@@ -30,6 +30,28 @@ intervient** — c'est la seule chose à comprendre pour choisir.
 S'y ajoute **Apprendre** : les règles en exercices jouables, la tactique par
 motif, et les exercices correspondant aux erreurs relevées dans vos parties.
 
+### Quatre professeurs
+
+En jeu assisté, vous choisissez un professeur et vous lui dites votre niveau.
+Il joue alors à la force correspondante et commente vos coups avec sa voix.
+
+| Professeur | Accompagne | Voix |
+|---|---|---|
+| **L'Homme Ultime** | Joueurs confirmés | Souverain. Ne console jamais, ne doute jamais, ne répète pas deux fois. |
+| **Ephraim** | Niveau club | Précis et méthodique. Remonte à la structure, donne les coups dans l'ordre. |
+| **Johana** | Débutants | Directe et bienveillante. Exige qu'on aille au bout, sans prendre par la main. |
+| **Serena** | Joueurs intermédiaires | Cultivée. Passe par l'histoire du jeu avant de revenir à la position — mais elle y revient. |
+
+Le niveau déclaré décide du vocabulaire **et** du palier auquel le professeur
+joue, borné par l'intervalle de chacun : demander « confirmé » à Johana ne la
+fera pas jouer à 2400, et l'écran le dit en clair avant de commencer.
+
+Les commentaires sont produits **sans aucune API ni clé** : `professeurs.ts`
+re-voise ce que `explications.ts` a déduit de l'analyse de Stockfish. Un vrai
+modèle de langage pourra s'y substituer plus tard derrière la même interface
+`MoteurCommentaire`, exactement comme la reconnaissance de position expose
+déjà deux implémentations interchangeables.
+
 ![Le jeu assisté : verdict, meilleur coup, et la seule flèche de l'écran](docs/images/jeu-assiste.png)
 
 ### Les partis pris
@@ -51,19 +73,38 @@ hors ligne et sans clé.
 La phrase principale ne contient jamais d'évaluation chiffrée : « ce coup vous
 coûte 0,77 » n'apprend rien. Le nombre reste affiché à côté, plus petit.
 
-**Six niveaux nommés**, avec leur ordre de grandeur Elo. `Skill Level` seul ne
-descend pas assez bas — à 0, Stockfish joue encore vers 1350 Elo — et le
-plancher d'`UCI_Elo` est 1320. Les paliers bas brident donc aussi la
-**profondeur**, seul levier qui descende plus bas.
+**Sept paliers nommés** — 400, 800, 1200, 1600, 2000, 2400 et pleine force.
 
-`npm run test:niveaux` le vérifie en faisant jouer le moteur contre lui-même :
+Y arriver a demandé de comprendre pourquoi les leviers évidents ne marchent
+pas :
 
-| Palier | Perte moyenne | Bourdes (≥ 200 cp) |
-|---|---|---|
-| Débutant (~800) | 150 cp | 8 |
-| Amateur (~1200) | 91 cp | 5 |
-| Club (~1600) | 40 cp | 2 |
-| Maximum | 2 cp | 0 |
+- `UCI_LimitStrength` **neutralise** `Skill Level`. Quand la limitation par
+  Elo est active, Stockfish dérive sa force du seul `UCI_Elo` et ignore le
+  skill. « Débutant » et « Amateur » demandaient tous deux `UCI_Elo 1320` :
+  ils jouaient donc à l'identique, très au-dessus de leur Elo affiché.
+- Le plancher d'`UCI_Elo` est 1320, et c'est un plancher dur.
+- `go depth 1` n'est pas faible : la recherche de quiescence résout toutes
+  les prises, donc le moteur ne pend jamais une pièce. Mesuré vers 1200.
+
+Sous 1320, le seul levier qui descende vraiment est de **ne pas jouer le
+meilleur coup** : `src/lib/choixCoup.ts` demande plusieurs candidats
+(MultiPV) et tire parmi eux par un softmax sur la perte en centipions, plus
+une probabilité de bévue franche. Au-dessus de 2000, `UCI_LimitStrength`
+dégrade au lieu de calibrer — Fort battait Expert 8–0 — et les paliers hauts
+sont donc séparés par `Skill Level`, la profondeur et le temps.
+
+`npm run test:matchs` fait jouer les paliers les uns contre les autres,
+couleurs alternées, **à profondeur fixe et avec un tirage à graine** : sans
+cela, la charge de la machine faisait passer un même match de 94 % à 50 %.
+Deux exécutions donnent maintenant un résultat identique.
+
+| Paire | Score du palier fort |
+|---|---|
+| Grand débutant → Débutant | 6/6 |
+| Débutant → Amateur | 6/6 |
+| Amateur → Club | 6/6 |
+| Club → Fort | 6/6 |
+| Grand débutant → Club | 6/6 |
 
 **Import d'une position par photo.** Prenez en photo un échiquier réel ou
 collez une capture d'écran : la position est transcrite case par case, puis
@@ -86,6 +127,12 @@ La direction est assumée : un club d'échecs, pas un tableau de bord.
   petit corps, et gratuit.
 - **Des micro-animations courtes** — 260 ms au maximum, jamais de décalage de
   mise en page, et toutes coupées sous `prefers-reduced-motion`.
+- **Des portraits animés par calques** pour les professeurs. Les paupières ne
+  sont pas des formes dessinées mais des fragments de l'image elle-même,
+  prélevés juste au-dessus de l'œil et rabattus par `scaleY` : teinte et
+  ombrage se fondent exactement. Clignement tiré entre 3 et 6 secondes,
+  respiration, mouvement de tête et halo d'accent pendant la parole — le tout
+  en `transform` et `opacity` seulement, à 60 images par seconde.
 
 Les deux thèmes sont vérifiés au contraste : le texte courant tient 15:1 sur
 le fond, le texte secondaire 5,9:1, et l'accent 5,8:1 en thème clair. Aucune
@@ -163,6 +210,8 @@ npm run preview:sans-isolation  # sert dist/ SANS COOP/COEP, pour éprouver
                                 # le repli mono-thread de Stockfish
 npm run icones                  # régénère les icônes PWA
 npm run captures                # régénère les captures du README
+npm run test:matchs             # matchs entre paliers, reproductibles
+npm run portraits               # reconvertit PROFS/*.jpg en WebP multi-tailles
 ```
 
 Les tests navigateur supposent qu'une préversion tourne sur le port 4173 et
@@ -181,6 +230,8 @@ src/
   hooks/         état de partie, moteur, raccourcis clavier et gestes
   ui/            briques d'interface, icônes, échiquier (Chessground), écran de correction
   pages/         les écrans (accueil, jeu, analyse, apprendre, rapport, réglages)
+PROFS/           portraits sources des professeurs (JPEG 1024)
+public/profs/    les mêmes en WebP, cinq largeurs — produits par `npm run portraits`
 netlify/functions/
   reconnaitre.mjs  proxy vers le modèle multimodal — garde la clé d'API hors du bundle
 ```
