@@ -318,23 +318,38 @@ export function Rapport({
       {rapport ? (
         <div className="grid gap-3 sm:grid-cols-2">
           <Carte titre="Précision">
-            <div className="flex items-center justify-around">
-              <div className="text-center">
-                <p className="font-mono text-3xl font-semibold">
-                  {rapport.precisionBlancs !== null
-                    ? `${rapport.precisionBlancs.toFixed(1).replace('.', ',')} %`
-                    : '—'}
-                </p>
-                <p className="mt-0.5 text-xs text-[var(--color-texte-doux)]">Blancs</p>
-              </div>
-              <div className="text-center">
-                <p className="font-mono text-3xl font-semibold">
-                  {rapport.precisionNoirs !== null
-                    ? `${rapport.precisionNoirs.toFixed(1).replace('.', ',')} %`
-                    : '—'}
-                </p>
-                <p className="mt-0.5 text-xs text-[var(--color-texte-doux)]">Noirs</p>
-              </div>
+            <div className="flex items-start justify-around gap-3">
+              {(
+                [
+                  ['Blancs', rapport.precisionBlancs, rapport.eloBlancs, rapport.perteMoyenneBlancs],
+                  ['Noirs', rapport.precisionNoirs, rapport.eloNoirs, rapport.perteMoyenneNoirs],
+                ] as const
+              ).map(([camp, precision, elo, perte]) => (
+                <div key={camp} className="min-w-0 text-center">
+                  <p className="chiffres text-3xl font-semibold">
+                    {precision !== null ? `${precision.toFixed(1).replace('.', ',')} %` : '—'}
+                  </p>
+                  <p className="mt-0.5 text-xs text-[var(--color-texte-doux)]">{camp}</p>
+                  {/* Elo estimé : la force à laquelle ce camp a joué CETTE
+                      partie, déduite de sa perte moyenne. Ce n'est pas un
+                      classement, et le dire évite de le prendre pour tel. */}
+                  {elo !== null ? (
+                    <p className="mt-2 text-xs text-[var(--color-texte-doux)]">
+                      niveau joué
+                      <br />
+                      <span className="chiffres text-base font-semibold text-[var(--color-texte)]">
+                        ~{elo} Elo
+                      </span>
+                      {perte !== null ? (
+                        <>
+                          <br />
+                          <span className="chiffres">{perte} cp perdus par coup</span>
+                        </>
+                      ) : null}
+                    </p>
+                  ) : null}
+                </div>
+              ))}
             </div>
             {rapport.ouverture ? (
               <p className="mt-3 text-center text-sm">

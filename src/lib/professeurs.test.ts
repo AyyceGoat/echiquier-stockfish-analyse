@@ -16,6 +16,9 @@ const contexte = (sur: Partial<ContexteCommentaire> = {}): ContexteCommentaire =
   classement: 'gaffe',
   coupSan: 'Cf3',
   meilleurSan: 'Td1',
+  varianteSan: ['Td1', 'Dxd1', 'Txd1', 'Cf6'],
+  reponseAdverseSan: 'Fxe4',
+  perteCp: 320,
   explication: {
     phrase: 'Ce coup laisse votre cavalier en e4 en prise.',
     complement: 'La colonne d reste ouverte.',

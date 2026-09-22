@@ -185,14 +185,105 @@ export function precisionCoup(pdgAvant: number, pdgApres: number): number {
   return Math.max(0, Math.min(100, brut));
 }
 
+/** Écart-type d'une série. Sert à pondérer les coups par la volatilité. */
+function ecartType(v: number[]): number {
+  if (v.length === 0) return 0;
+  const m = v.reduce((a, b) => a + b, 0) / v.length;
+  return Math.sqrt(v.reduce((a, b) => a + (b - m) ** 2, 0) / v.length);
+}
+
 /**
- * Moyenne des précisions par coup. Renvoie `null` si le joueur n'a joué
- * aucun coup — afficher « 0 % » serait trompeur.
+ * Précision d'une partie, pour un camp.
+ *
+ * La moyenne arithmétique — ce qui était fait ici — est beaucoup trop
+ * indulgente, et c'est un défaut mesurable, pas une question de goût. Dans
+ * une partie ordinaire, l'immense majorité des coups sont forcés ou évidents
+ * et valent 100 % ; deux gaffes noyées dans soixante coups à 100 % laissent
+ * la moyenne au-dessus de 95 %. D'où des parties jouées sans attention
+ * notées 96 %.
+ *
+ * On reprend donc la méthode de Lichess, qui combine deux moyennes :
+ *
+ *  - une moyenne PONDÉRÉE PAR LA VOLATILITÉ : chaque coup est pesé par
+ *    l'écart-type des probabilités de gain dans une fenêtre glissante
+ *    autour de lui. Un coup joué dans une position calme, où rien ne peut
+ *    mal tourner, compte moins qu'un coup joué dans une position tendue ;
+ *  - une moyenne HARMONIQUE, qui est dominée par les petites valeurs. C'est
+ *    elle qui fait qu'une gaffe coûte vraiment, au lieu d'être diluée.
+ *
+ * Le résultat est la moyenne des deux. C'est la combinaison qui distingue
+ * une partie soignée d'une partie jouée à la légère, là où la moyenne
+ * arithmétique les mettait toutes deux au-dessus de 90 %.
+ *
+ * Renvoie `null` si le joueur n'a joué aucun coup : afficher « 0 % » serait
+ * trompeur.
  */
-export function precisionPartie(precisions: number[]): number | null {
+export function precisionPartie(precisions: number[], pdgSuccessives?: number[]): number | null {
   if (precisions.length === 0) return null;
-  const somme = precisions.reduce((a, b) => a + b, 0);
-  return Math.round((somme / precisions.length) * 10) / 10;
+  if (precisions.length === 1) return Math.round(precisions[0] * 10) / 10;
+
+  // --- Moyenne pondérée par la volatilité ---
+  // Sans la suite des probabilités de gain, on retombe sur des poids égaux :
+  // la moyenne harmonique porte alors seule la sévérité.
+  let moyennePonderee: number;
+  if (pdgSuccessives && pdgSuccessives.length >= 2) {
+    const fenetre = Math.max(2, Math.min(8, Math.floor(pdgSuccessives.length / 10)));
+    const poids: number[] = [];
+    for (let i = 0; i < precisions.length; i++) {
+      // Fenêtre centrée, ramenée dans les bornes de la série.
+      const debut = Math.max(0, Math.min(pdgSuccessives.length - fenetre, i));
+      const sd = ecartType(pdgSuccessives.slice(debut, debut + fenetre));
+      poids.push(Math.max(0.5, Math.min(12, sd)));
+    }
+    const sommePoids = poids.reduce((a, b) => a + b, 0);
+    moyennePonderee =
+      sommePoids > 0
+        ? precisions.reduce((a, p, i) => a + p * poids[i], 0) / sommePoids
+        : precisions.reduce((a, b) => a + b, 0) / precisions.length;
+  } else {
+    moyennePonderee = precisions.reduce((a, b) => a + b, 0) / precisions.length;
+  }
+
+  // --- Moyenne harmonique ---
+  // Le plancher à 1 évite la division par zéro d'un coup noté 0 %, qui
+  // ramènerait toute la partie à 0.
+  const sommeInverses = precisions.reduce((a, p) => a + 1 / Math.max(1, p), 0);
+  const moyenneHarmonique = precisions.length / sommeInverses;
+
+  const valeur = (moyennePonderee + moyenneHarmonique) / 2;
+  return Math.round(Math.max(0, Math.min(100, valeur)) * 10) / 10;
+}
+
+/**
+ * Elo estimé auquel un joueur a joué, d'après sa perte moyenne en
+ * centipions.
+ *
+ * La courbe n'est pas tirée d'un article : elle est calée sur l'échelle de
+ * force de CE moteur, dont les paliers sont eux-mêmes vérifiés par des
+ * matchs (`npm run test:matchs`). Les pertes moyennes mesurées par
+ * `npm run test:niveaux` servent de points d'ancrage, ce qui rend
+ * l'estimation cohérente avec l'adversaire que l'application propose — un
+ * joueur qui bat régulièrement le palier « Club » doit lire un Elo proche de
+ * 1600.
+ *
+ * Forme retenue : l'Elo décroît linéairement avec le LOGARITHME de la perte
+ * moyenne. Une exponentielle simple a d'abord été essayée et ratait tout le
+ * milieu de l'échelle — elle plaçait le palier Club, mesuré à 40 cp de perte
+ * moyenne, autour de 2070 au lieu de 1600. Les deux coefficients sont résolus
+ * sur les ancrages Club (40 cp → 1600) et Débutant (150 cp → 800) :
+ *
+ *     Elo = 3832 − 605 · ln(perte moyenne)
+ *
+ * Contrôles : 91 cp donne 1100 pour un palier Amateur annoncé à 1200, et
+ * 2 cp sature au plafond, ce qui est le comportement attendu de la pleine
+ * force.
+ */
+export function eloEstime(perteMoyenneCp: number, nbCoups: number): number | null {
+  // Sous une dizaine de coups, la perte moyenne ne veut rien dire.
+  if (nbCoups < 10) return null;
+  const acpl = Math.max(1, perteMoyenneCp);
+  const elo = 3832 - 605 * Math.log(acpl);
+  return Math.round(Math.max(250, Math.min(2900, elo)) / 10) * 10;
 }
 
 /** Convertit une évaluation en probabilité de gain pour les blancs (0–100). */

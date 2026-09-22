@@ -36,6 +36,184 @@
     <title>Échiquier — Stockfish &amp; Analyse</title>
 
     <!--
+      Styles de l'écran de lancement, en ligne et avant tout le reste.
+      Une feuille externe ajouterait un aller-retour réseau AVANT le premier
+      pixel, ce qui est exactement ce qu'on cherche à éviter.
+    -->
+    <style>
+      :root {
+        --lancement-fond: #14120f;
+        --lancement-accent: #d9a441;
+        --lancement-texte: #f3ede4;
+        --lancement-doux: #a79c8d;
+      }
+      #lancement {
+        position: fixed;
+        inset: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--lancement-fond);
+        font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+      /* Sortie : opacité et échelle seulement, donc composées par le GPU. */
+      #lancement.lc-sort {
+        opacity: 0;
+        transform: scale(1.04);
+        transition: opacity 520ms cubic-bezier(0.22, 0.61, 0.36, 1),
+          transform 520ms cubic-bezier(0.22, 0.61, 0.36, 1);
+        pointer-events: none;
+      }
+      .lc-fond {
+        position: absolute;
+        inset: 0;
+        background: radial-gradient(70rem 34rem at 50% 18%, rgb(217 164 65 / 0.13), transparent 70%);
+      }
+      .lc-scene {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1.5rem;
+        padding: 1.5rem;
+      }
+
+      /* Le damier qui se remplit : huit colonnes qui montent en décalé. */
+      .lc-damier {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        width: min(26rem, 76vw);
+        height: min(26rem, 76vw);
+        transform: translate(-50%, -52%);
+        display: flex;
+        /* Discret : le damier est un fond, pas le sujet. Au-delà, le nom du
+           projet devenait illisible par-dessus. */
+        opacity: 0.16;
+      }
+      /* Voile sombre au centre : c'est lui qui rend la marque lisible sans
+         avoir à poser un cadre autour du texte. */
+      .lc-damier::after {
+        content: '';
+        position: absolute;
+        inset: -20%;
+        background: radial-gradient(
+          circle at 50% 50%,
+          var(--lancement-fond) 0%,
+          rgb(20 18 15 / 0.85) 38%,
+          transparent 72%
+        );
+      }
+      .lc-col {
+        flex: 1;
+        transform-origin: 50% 100%;
+        transform: scaleY(0);
+        animation: lc-monte 620ms cubic-bezier(0.22, 0.61, 0.36, 1) forwards;
+        background: repeating-linear-gradient(
+          to bottom,
+          #8c6242 0 12.5%,
+          #d8bd99 12.5% 25%
+        );
+      }
+      .lc-col:nth-child(even) {
+        background: repeating-linear-gradient(
+          to bottom,
+          #d8bd99 0 12.5%,
+          #8c6242 12.5% 25%
+        );
+      }
+      .lc-col:nth-child(1) { animation-delay: 0ms; }
+      .lc-col:nth-child(2) { animation-delay: 60ms; }
+      .lc-col:nth-child(3) { animation-delay: 120ms; }
+      .lc-col:nth-child(4) { animation-delay: 180ms; }
+      .lc-col:nth-child(5) { animation-delay: 240ms; }
+      .lc-col:nth-child(6) { animation-delay: 300ms; }
+      .lc-col:nth-child(7) { animation-delay: 360ms; }
+      .lc-col:nth-child(8) { animation-delay: 420ms; }
+      @keyframes lc-monte {
+        from { transform: scaleY(0); }
+        to { transform: scaleY(1); }
+      }
+
+      .lc-marque {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        opacity: 0;
+        animation: lc-apparait 520ms cubic-bezier(0.22, 0.61, 0.36, 1) 560ms forwards;
+      }
+      @keyframes lc-apparait {
+        from { opacity: 0; transform: translateY(10px) scale(0.96); }
+        to { opacity: 1; transform: none; }
+      }
+      .lc-logo {
+        width: 3.5rem;
+        height: 3.5rem;
+        filter: drop-shadow(0 6px 18px rgb(0 0 0 / 0.55));
+      }
+      .lc-nom {
+        margin: 0;
+        font-family: 'Iowan Old Style', 'Palatino Linotype', Palatino, Georgia, serif;
+        font-size: 2rem;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        color: var(--lancement-texte);
+      }
+      .lc-accroche {
+        margin: 0;
+        font-size: 0.8125rem;
+        letter-spacing: 0.02em;
+        color: var(--lancement-doux);
+      }
+
+      .lc-jauge {
+        position: relative;
+        width: 13rem;
+        height: 3px;
+        border-radius: 999px;
+        background: rgb(243 237 228 / 0.12);
+        overflow: hidden;
+        opacity: 0;
+        animation: lc-apparait 400ms ease-out 760ms forwards;
+      }
+      .lc-jauge span {
+        display: block;
+        height: 100%;
+        width: 100%;
+        border-radius: inherit;
+        background: var(--lancement-accent);
+        transform-origin: 0 50%;
+        /* La jauge est pilotée par `scaleX`, pas par `width` : une largeur
+           animée provoque un recalcul de mise en page à chaque image. */
+        transform: scaleX(0.04);
+        transition: transform 420ms cubic-bezier(0.22, 0.61, 0.36, 1);
+      }
+      .lc-etape {
+        position: relative;
+        margin: 0;
+        min-height: 1.1rem;
+        font-size: 0.75rem;
+        color: var(--lancement-doux);
+        opacity: 0;
+        animation: lc-apparait 400ms ease-out 820ms forwards;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        #lancement *,
+        #lancement {
+          animation-duration: 0.01ms !important;
+          animation-delay: 0ms !important;
+          transition-duration: 0.01ms !important;
+        }
+        .lc-col { transform: scaleY(1); }
+      }
+    </style>
+
+    <!--
       Thème appliqué AVANT le premier rendu.
       `main.tsx` le fait aussi, mais il ne s'exécute qu'une fois le module
       chargé : entre-temps, un utilisateur en thème clair voyait une page
@@ -66,12 +244,115 @@
     </script>
   </head>
   <body>
+    <!--
+      ÉCRAN DE LANCEMENT
+      ==================
+      Écrit en clair dans le document, avec ses styles en ligne : il s'affiche
+      au premier rendu du navigateur, avant que la moindre ligne de
+      JavaScript ne soit téléchargée. C'est la condition pour qu'il n'y ait
+      jamais d'écran noir — un écran de lancement chargé par le bundle
+      arriverait après le vide qu'il est censé remplir.
+
+      Le motif est un échiquier qui se remplit case par case : huit colonnes
+      qui montent, décalées, puis la marque qui apparaît par-dessus. Il dure
+      le temps qu'il faut et pas plus — dès que l'application est prête, la
+      transition part, quel que soit l'avancement de l'animation.
+
+      Conçu pour être repris tel quel sur un autre projet : tout est dans ce
+      bloc, il ne dépend d'aucun fichier, et seules les quatre variables de
+      `--lancement-*` changent d'un projet à l'autre.
+    -->
+    <div id="lancement" role="status" aria-label="Chargement de l’application">
+      <div class="lc-fond"></div>
+      <div class="lc-scene">
+        <div class="lc-damier" aria-hidden="true">
+          <div class="lc-col"></div><div class="lc-col"></div>
+          <div class="lc-col"></div><div class="lc-col"></div>
+          <div class="lc-col"></div><div class="lc-col"></div>
+          <div class="lc-col"></div><div class="lc-col"></div>
+        </div>
+        <div class="lc-marque">
+          <svg class="lc-logo" viewBox="0 0 32 32" aria-hidden="true">
+            <rect width="32" height="32" rx="7" fill="#14120f"></rect>
+            <rect x="4.2" y="4.2" width="23.6" height="23.6" rx="1.6" fill="#d9a441"></rect>
+            <rect x="5" y="5" width="22" height="22" fill="#e8d3b0"></rect>
+            <path fill="#8c6242" d="M5 5h5.5v5.5H5zM16 5h5.5v5.5H16zM10.5 10.5H16V16h-5.5zM21.5 10.5H27V16h-5.5zM5 16h5.5v5.5H5zM16 16h5.5v5.5H16zM10.5 21.5H16V27h-5.5zM21.5 21.5H27V27h-5.5z"></path>
+          </svg>
+          <p class="lc-nom">Échiquier</p>
+          <p class="lc-accroche">Jouez. Comprenez. Progressez.</p>
+        </div>
+        <div class="lc-jauge" aria-hidden="true"><span id="lancement-barre"></span></div>
+        <p class="lc-etape" id="lancement-etape">Préparation…</p>
+      </div>
+    </div>
+
     <div id="racine"></div>
     <noscript>
       <p style="padding: 1.5rem; font-family: system-ui; color: #f3ede4">
         Cette application a besoin de JavaScript pour fonctionner.
       </p>
     </noscript>
+    <!--
+      Pilotage de l'écran de lancement.
+
+      L'API est volontairement minuscule et posée sur `window` : le bundle
+      la sollicite quand il progresse, et la retire quand l'application est
+      prête. Si le JavaScript échouait complètement, l'écran resterait — d'où
+      le garde-fou de 20 secondes, qui affiche une issue plutôt que de
+      laisser un visiteur devant une marque immobile.
+    -->
+    <script>
+      (function () {
+        var racine = document.getElementById('lancement');
+        var barre = document.getElementById('lancement-barre');
+        var etape = document.getElementById('lancement-etape');
+        if (!racine) return;
+
+        var part = 0.04;
+        var debut = Date.now();
+        /** Durée minimale d'affichage : en dessous, l'écran clignote. */
+        var MINIMUM = 900;
+
+        function avancer(valeur, texte) {
+          // Monotone : une jauge qui recule est pire que pas de jauge.
+          part = Math.max(part, Math.min(1, valeur));
+          if (barre) barre.style.transform = 'scaleX(' + part + ')';
+          if (texte && etape) etape.textContent = texte;
+        }
+
+        function terminer() {
+          avancer(1, 'Prêt');
+          var reste = Math.max(0, MINIMUM - (Date.now() - debut));
+          setTimeout(function () {
+            racine.classList.add('lc-sort');
+            // On retire le nœud après la transition : le laisser en place
+            // garderait un calque plein écran au-dessus de l'application.
+            setTimeout(function () {
+              if (racine && racine.parentNode) racine.parentNode.removeChild(racine);
+            }, 600);
+          }, reste);
+        }
+
+        window.__lancement = { avancer: avancer, terminer: terminer };
+
+        // Garde-fou : si l'application ne se signale jamais, on sort quand
+        // même et on laisse le visiteur voir ce qu'il y a derrière.
+        setTimeout(function () {
+          if (document.getElementById('lancement')) {
+            if (etape) etape.textContent = 'Le chargement prend plus de temps que prévu…';
+            terminer();
+          }
+        }, 20000);
+
+        // Progression fine pendant le téléchargement du bundle : on ne sait
+        // pas encore ce qu'il reste, mais on sait que ça avance.
+        var faux = setInterval(function () {
+          if (part >= 0.6) return clearInterval(faux);
+          avancer(part + 0.035);
+        }, 180);
+      })();
+    </script>
+
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -71,6 +71,14 @@ interface Verdict {
   explication: Explication;
   /** FEN de la position d'où le coup a été joué, pour la flèche. */
   fenAvant: string;
+  /**
+   * Meilleure réponse de l'adversaire au coup joué.
+   *
+   * C'est elle qui permet de dire ce qui est MENACÉ. Sans elle, le
+   * commentaire ne sait que constater la faute, ce qui n'aide pas au coup
+   * suivant.
+   */
+  reponseAdverseSan: string | null;
 }
 
 const PROFONDEUR_VERDICT_MOBILE = 12;
@@ -216,6 +224,12 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
             nbCoupsLegaux,
           }),
           fenAvant,
+          // Premier coup de la variante du moteur APRÈS le coup joué : c'est
+          // la meilleure réponse de l'adversaire.
+          reponseAdverseSan: (() => {
+            const pv = apresRes?.lignes[0]?.pv ?? [];
+            return pv.length > 0 ? uciVersSan(fenApres, pv[0]) : null;
+          })(),
         });
       } catch (e) {
         if (e instanceof DOMException && e.name === 'AbortError') return;
@@ -321,8 +335,11 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
    */
   useEffect(() => {
     if (!verdict) {
-      setCommentaire('');
-      setCommentaireAffiche('');
+      // Pas de verdict : le professeur salue. C'est ce qui le rend présent
+      // dès le lancement, avant le premier coup — auparavant il n'existait
+      // qu'à l'intérieur de la carte de verdict, donc nulle part tant qu'on
+      // n'avait pas joué.
+      setCommentaire(prof.salutation);
       return;
     }
     let vivant = true;
@@ -331,6 +348,9 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
         classement: verdict.classement,
         coupSan: uciVersSan(verdict.fenAvant, verdict.coupJoue) ?? verdict.coupJoue,
         meilleurSan: verdict.meilleurSan,
+        varianteSan: verdict.varianteSan,
+        reponseAdverseSan: verdict.reponseAdverseSan,
+        perteCp: verdict.perteCp,
         explication: verdict.explication,
         eleve: reglages.niveauEleve,
       })
@@ -580,6 +600,24 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
             </Alerte>
           ) : null}
 
+          {/* Le professeur est là en permanence, du lancement à la fin de
+              la partie. Il vivait auparavant DANS la carte de verdict :
+              il n'apparaissait donc qu'après un coup, et disparaissait
+              entre deux. */}
+          <Carte titre={prof.nom}>
+            <div className="flex items-start gap-3">
+              <div className="w-16 shrink-0 sm:w-20">
+                <PortraitProfesseur
+                  prof={prof}
+                  parle={parleEnCours}
+                  cleEntree={prof.id}
+                  className="pp-pastille"
+                />
+              </div>
+              <p className="min-h-[7rem] flex-1 text-sm leading-relaxed">{commentaireAffiche}</p>
+            </div>
+          </Carte>
+
           {verdictEnCours ? (
             <Carte titre="Votre coup">
               <p className="flex items-center gap-1.5 text-sm text-[var(--color-texte-doux)]">
@@ -589,27 +627,6 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
             </Carte>
           ) : verdictVisible && verdict ? (
             <Carte titre="Votre coup">
-              {/* Le portrait et la parole du professeur d'abord : c'est lui
-                  qu'on écoute, le classement n'est qu'une étiquette. */}
-              <div className="mb-3 flex items-start gap-3">
-                <div className="w-16 shrink-0 sm:w-20">
-                  <PortraitProfesseur
-                    prof={prof}
-                    parle={parleEnCours}
-                    cleEntree={verdict.coupJoue}
-                    className="pp-pastille"
-                  />
-                  <p className="mt-1 text-center text-[0.65rem] leading-tight text-[var(--color-texte-doux)]">
-                    {prof.nom}
-                  </p>
-                </div>
-                {/* Hauteur réservée : le texte s'écrit lettre à lettre, et
-                    sans minimum la carte grandirait sous le doigt. */}
-                <p className="min-h-[5.5rem] flex-1 text-sm leading-relaxed">
-                  {commentaireAffiche}
-                </p>
-              </div>
-
               <p
                 className="titre text-lg font-semibold"
                 style={{ color: COULEURS[verdict.classement] }}
