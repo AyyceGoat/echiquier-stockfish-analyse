@@ -13,6 +13,7 @@
 
 import { SEUILS_PAR_DEFAUT, type SeuilsClassification } from './classification.ts';
 import { NIVEAU_PAR_DEFAUT, niveauDepuisAncienneValeur } from './niveaux.ts';
+import { PROFESSEUR_PAR_DEFAUT, type NiveauEleve } from './professeurs.ts';
 
 export type NiveauAssistance = 'chaque-coup' | 'erreurs-graves';
 export type Theme = 'sombre' | 'clair' | 'systeme';
@@ -39,6 +40,16 @@ export interface Reglages {
   sons: boolean;
   /** Animation des pièces (désactivable sur appareil lent). */
   animations: boolean;
+  /** Professeur choisi pour le jeu assisté. */
+  professeur: string;
+  /**
+   * Niveau déclaré par l'élève.
+   *
+   * Il décide à la fois du vocabulaire employé par le professeur et du palier
+   * auquel celui-ci joue — borné par l'intervalle de chaque professeur, qui
+   * n'accompagne pas toute l'échelle.
+   */
+  niveauEleve: NiveauEleve;
 }
 
 export const REGLAGES_PAR_DEFAUT: Reglages = {
@@ -54,6 +65,8 @@ export const REGLAGES_PAR_DEFAUT: Reglages = {
   coordonnees: true,
   sons: false,
   animations: true,
+  professeur: PROFESSEUR_PAR_DEFAUT,
+  niveauEleve: 'intermediaire',
 };
 
 const CLE = 'echiquier.reglages.v1';
