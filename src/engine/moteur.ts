@@ -50,7 +50,7 @@ export interface ParametresRecherche {
   coups?: string[];
   profondeur?: number;
   tempsMs?: number;
-  /** Nombre de variantes à retourner (1 à 5). */
+  /** Nombre de variantes à retourner (1 à 16). */
   multiPV?: number;
   /** Analyse continue : ne s'arrête que sur `arreter()`. */
   infinie?: boolean;
@@ -561,7 +561,11 @@ export class Moteur {
 
     const p = tache.params;
 
-    const multiPV = Math.max(1, Math.min(5, p.multiPV ?? 1));
+    // Plafond à 16 et non à 5 : les paliers faibles demandent jusqu'à douze
+    // candidats pour que le tirage pondéré ait de quoi choisir. Cinq
+    // candidats sont les cinq MEILLEURS coups — trop bons pour produire une
+    // erreur de débutant.
+    const multiPV = Math.max(1, Math.min(16, p.multiPV ?? 1));
     if (multiPV !== this.multiPVActuel) {
       w.postMessage(`setoption name MultiPV value ${multiPV}`);
       this.multiPVActuel = multiPV;
