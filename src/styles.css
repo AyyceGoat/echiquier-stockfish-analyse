@@ -704,6 +704,155 @@ input[type='range']:active::-webkit-slider-thumb {
 }
 
 /* ==========================================================================
+   PORTRAITS DES PROFESSEURS
+   --------------------------------------------------------------------------
+   Calques superposés à une image plate. Tout est animé en `transform` et
+   `opacity` : ce sont les deux seules propriétés que le compositeur anime
+   sans recalcul de mise en page, donc les seules qui tiennent 60 images par
+   seconde sur mobile.
+   ========================================================================== */
+
+.pp-scene {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--color-fond-3);
+  /* Le halo déborde sous le portrait : sans contexte d'empilement propre,
+     il passerait sous la carte voisine. */
+  isolation: isolate;
+}
+
+.pp-scene .pp-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* Halo d'accent pendant la parole, SOUS le portrait : posé par-dessus, il
+   laverait le visage. */
+.pp-halo {
+  position: absolute;
+  inset: -14%;
+  z-index: 0;
+  opacity: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--pp-accent) 0%, transparent 62%);
+}
+
+.pp-buste {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  animation: pp-respiration 5.2s ease-in-out infinite;
+  transform-origin: 50% 100%;
+  will-change: transform;
+}
+
+/* Calque de tête : une COPIE du portrait, masquée en fondu juste au-dessus
+   du cou. Il DOIT contenir le visage — s'il ne portait que les paupières,
+   celles-ci dériveraient d'un visage resté immobile et quitteraient l'œil. */
+.pp-tete {
+  position: absolute;
+  inset: 0;
+  animation: pp-balancement 8.1s ease-in-out infinite;
+  transform-origin: 50% var(--pp-cou);
+  will-change: transform;
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 calc(var(--pp-cou) - 7%),
+    transparent calc(var(--pp-cou) + 3%)
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    #000 0%,
+    #000 calc(var(--pp-cou) - 7%),
+    transparent calc(var(--pp-cou) + 3%)
+  );
+}
+
+/* Boîte recadrée : le contenu est une copie sur-dimensionnée et décalée, ce
+   qui évite d'animer `clip-path` — qui n'est ni transform ni opacity. */
+.pp-boite {
+  position: absolute;
+  overflow: hidden;
+}
+
+.pp-boite .pp-peau {
+  position: absolute;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+}
+
+.pp-paupiere {
+  transform: scaleY(0);
+  transform-origin: 50% 0%;
+  will-change: transform;
+}
+
+@keyframes pp-respiration {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+  }
+  50% {
+    transform: translateY(-0.5%) scale(1.012);
+  }
+}
+
+@keyframes pp-balancement {
+  0%,
+  100% {
+    transform: rotate(-0.5deg) translateX(-0.25%);
+  }
+  50% {
+    transform: rotate(0.5deg) translateX(0.25%);
+  }
+}
+
+@keyframes pp-halo {
+  0%,
+  100% {
+    opacity: 0.16;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(1.04);
+  }
+}
+
+@keyframes pp-entree {
+  from {
+    opacity: 0;
+    transform: translateY(3%) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.pp-scene.pp-parle .pp-halo {
+  animation: pp-halo 1.6s ease-in-out infinite;
+}
+
+.pp-entre {
+  animation: pp-entree 520ms var(--courbe) both;
+}
+
+/* Vignette de sélection : le portrait dans une pastille ronde. */
+.pp-pastille {
+  border-radius: 50%;
+}
+
+/* ==========================================================================
    PRÉFÉRENCE SYSTÈME : MOUVEMENT RÉDUIT
    ========================================================================== */
 @media (prefers-reduced-motion: reduce) {
@@ -718,5 +867,15 @@ input[type='range']:active::-webkit-slider-thumb {
 
   .cg-wrap .cg-shapes g {
     animation: none;
+  }
+
+  /* Portraits : plus de respiration, plus de balancement, plus de halo.
+     Le clignement est piloté en JavaScript et se coupe de son côté. */
+  .pp-buste,
+  .pp-tete,
+  .pp-halo,
+  .pp-entre {
+    animation: none !important;
+    transform: none !important;
   }
 }

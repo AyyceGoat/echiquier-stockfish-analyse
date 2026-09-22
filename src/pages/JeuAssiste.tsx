@@ -39,7 +39,14 @@ import { formaterEvaluation, type Evaluation } from '../lib/uci.ts';
 import { Echiquier, type FlecheEchiquier } from '../ui/Echiquier.tsx';
 import { DialoguePromotion } from '../ui/DialoguePromotion.tsx';
 import { ListeCoups } from '../ui/ListeCoups.tsx';
-import { ChoixNiveau, NiveauActif } from '../ui/ChoixNiveau.tsx';
+import { NiveauActif } from '../ui/ChoixNiveau.tsx';
+import { ChoixProfesseur } from '../ui/ChoixProfesseur.tsx';
+import { PortraitProfesseur } from '../ui/PortraitProfesseur.tsx';
+import {
+  commentaireLocal,
+  palierDuProfesseur,
+  professeurParId,
+} from '../lib/professeurs.ts';
 import {
   AffichageEval,
   Alerte,
@@ -89,6 +96,21 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
 
   const zoneEchiquier = useRef<HTMLDivElement>(null);
   const verdictEnAttente = useRef(false);
+
+  /**
+   * Le palier n'est plus choisi directement : il découle du professeur et du
+   * niveau déclaré par l'élève, borné par l'intervalle du professeur. C'est
+   * ce que l'écran de choix annonce en clair avant de commencer.
+   */
+  const prof = professeurParId(reglages.professeur);
+  const palier = useMemo(
+    () => niveauParId(palierDuProfesseur(prof, reglages.niveauEleve)),
+    [prof, reglages.niveauEleve],
+  );
+
+  /** Commentaire du professeur sur le dernier verdict, et sa frappe. */
+  const [commentaire, setCommentaire] = useState('');
+  const [commentaireAffiche, setCommentaireAffiche] = useState('');
 
   const { jouerCoup, fin, trait, fenCourante } = partie;
   const monTour = configuree && !fin && trait === monCamp;
@@ -240,7 +262,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
 
     let annule = false;
     setReflechit(true);
-    demander(fenCourante, niveauParId(reglages.niveauMoteur))
+    demander(fenCourante, palier)
       .then(({ coup, erreur: err }) => {
         if (annule) return;
         setReflechit(false);
@@ -266,7 +288,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
     fenCourante,
     verdictEnCours,
     attendDecision,
-    reglages.niveauMoteur,
+    palier,
     demander,
     jouerCoup,
   ]);
@@ -279,15 +301,74 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
       id: idPartie,
       date: Date.now(),
       mode: 'assiste',
-      blanc: monCamp === 'w' ? 'Moi' : `Stockfish (${niveauParId(reglages.niveauMoteur).libelle})`,
-      noir: monCamp === 'b' ? 'Moi' : `Stockfish (${niveauParId(reglages.niveauMoteur).libelle})`,
+      blanc: monCamp === 'w' ? 'Moi' : `${prof.nom} (${palier.libelle})`,
+      noir: monCamp === 'b' ? 'Moi' : `${prof.nom} (${palier.libelle})`,
       resultat: fin.resultat,
       finPar: fin.raison,
       fenDepart: partie.fenDepart,
       coupsSan: partie.coupsSan,
-      niveauMoteur: reglages.niveauMoteur,
+      niveauMoteur: palier.id,
     });
-  }, [fin, enregistree, partie.coups.length, partie.fenDepart, partie.coupsSan, idPartie, monCamp, reglages.niveauMoteur]);
+  }, [fin, enregistree, partie.coups.length, partie.fenDepart, partie.coupsSan, idPartie, monCamp, prof.nom, palier.libelle]);
+
+  /**
+   * Commentaire du professeur, produit à partir du verdict.
+   *
+   * Aucune requête : `commentaireLocal` re-voise ce que `explications.ts` a
+   * déduit de l'analyse de Stockfish. L'interface passe par l'interface
+   * `MoteurCommentaire`, si bien qu'une implémentation en ligne pourra s'y
+   * substituer plus tard sans toucher à cet écran.
+   */
+  useEffect(() => {
+    if (!verdict) {
+      setCommentaire('');
+      setCommentaireAffiche('');
+      return;
+    }
+    let vivant = true;
+    void commentaireLocal
+      .commenter(prof, {
+        classement: verdict.classement,
+        coupSan: uciVersSan(verdict.fenAvant, verdict.coupJoue) ?? verdict.coupJoue,
+        meilleurSan: verdict.meilleurSan,
+        explication: verdict.explication,
+        eleve: reglages.niveauEleve,
+      })
+      .then((texte) => {
+        if (vivant) setCommentaire(texte);
+      });
+    return () => {
+      vivant = false;
+    };
+  }, [verdict, prof, reglages.niveauEleve]);
+
+  /**
+   * Frappe du commentaire.
+   *
+   * C'est elle qui définit la durée de parole : le halo s'allume tant que le
+   * texte s'écrit et s'éteint au dernier caractère, sans minuteur séparé qui
+   * pourrait se désynchroniser.
+   */
+  useEffect(() => {
+    if (!commentaire) {
+      setCommentaireAffiche('');
+      return;
+    }
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setCommentaireAffiche(commentaire);
+      return;
+    }
+    setCommentaireAffiche('');
+    let i = 0;
+    const t = setInterval(() => {
+      i += 1;
+      setCommentaireAffiche(commentaire.slice(0, i));
+      if (i >= commentaire.length) clearInterval(t);
+    }, 18);
+    return () => clearInterval(t);
+  }, [commentaire]);
+
+  const parleEnCours = commentaire.length > 0 && commentaireAffiche.length < commentaire.length;
 
   const reprendreLeCoup = useCallback(() => {
     // Si le moteur a malgré tout déjà répondu, on remonte jusqu'à rendre
@@ -368,8 +449,9 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
     return (
       <div className="mx-auto max-w-lg space-y-4">
         <EnTetePage titre="Jeu assisté">
-          Stockfish commente chacun de vos coups pendant la partie. Vous pouvez reprendre un coup
-          ou le garder et continuer.
+          Choisissez un professeur et dites-lui votre niveau : il jouera contre vous à la force
+          correspondante et commentera chacun de vos coups. Vous pouvez reprendre un coup ou le
+          garder et continuer.
         </EnTetePage>
 
         <Carte titre="Niveau d’assistance">
@@ -389,10 +471,12 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
           </p>
         </Carte>
 
-        <Carte titre="Adversaire">
-          <ChoixNiveau
-            valeur={reglages.niveauMoteur}
-            onChange={(id) => majReglages({ niveauMoteur: id })}
+        <Carte titre="Professeur">
+          <ChoixProfesseur
+            professeur={reglages.professeur}
+            niveauEleve={reglages.niveauEleve}
+            onProfesseur={(id) => majReglages({ professeur: id })}
+            onNiveauEleve={(n) => majReglages({ niveauEleve: n })}
           />
         </Carte>
 
@@ -475,11 +559,11 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
           {/* Voir PartieLibre : la hauteur est réservée pour que l'échiquier
               ne bouge pas quand l'indicateur apparaît. */}
           <div className="mt-3 flex min-h-[1.875rem] flex-wrap items-center justify-center gap-x-3 gap-y-1">
-            <NiveauActif id={reglages.niveauMoteur} />
+            <NiveauActif id={palier.id} />
             {moteurReflechit ? (
               <span className="flex items-center gap-1.5 text-sm text-[var(--color-texte-doux)]">
-                Stockfish réfléchit
-                <Points libelle="Stockfish réfléchit" />
+                {prof.nom} réfléchit
+                <Points libelle={`${prof.nom} réfléchit`} />
               </span>
             ) : null}
           </div>
@@ -505,6 +589,27 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
             </Carte>
           ) : verdictVisible && verdict ? (
             <Carte titre="Votre coup">
+              {/* Le portrait et la parole du professeur d'abord : c'est lui
+                  qu'on écoute, le classement n'est qu'une étiquette. */}
+              <div className="mb-3 flex items-start gap-3">
+                <div className="w-16 shrink-0 sm:w-20">
+                  <PortraitProfesseur
+                    prof={prof}
+                    parle={parleEnCours}
+                    cleEntree={verdict.coupJoue}
+                    className="pp-pastille"
+                  />
+                  <p className="mt-1 text-center text-[0.65rem] leading-tight text-[var(--color-texte-doux)]">
+                    {prof.nom}
+                  </p>
+                </div>
+                {/* Hauteur réservée : le texte s'écrit lettre à lettre, et
+                    sans minimum la carte grandirait sous le doigt. */}
+                <p className="min-h-[5.5rem] flex-1 text-sm leading-relaxed">
+                  {commentaireAffiche}
+                </p>
+              </div>
+
               <p
                 className="titre text-lg font-semibold"
                 style={{ color: COULEURS[verdict.classement] }}
@@ -518,13 +623,6 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
                       « 0,62 pion » mais « 2,10 pions ». */}
                   Perte : {verdict.perteAffichee.replace('−', '')}{' '}
                   {Math.abs(verdict.perteCp) / 100 >= 2 ? 'pions' : 'pion'}
-                </p>
-              ) : null}
-
-              <p className="mt-2 text-sm">{verdict.explication.phrase}</p>
-              {verdict.explication.complement ? (
-                <p className="mt-1 text-sm text-[var(--color-texte-doux)]">
-                  {verdict.explication.complement}
                 </p>
               ) : null}
 
@@ -552,7 +650,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
                   </div>
                   {attendDecision ? (
                     <p className="mt-2 text-center text-xs text-[var(--color-texte-doux)]">
-                      Stockfish attend votre décision avant de répondre.
+                      {prof.nom} attend votre décision avant de répondre.
                     </p>
                   ) : null}
                 </>
