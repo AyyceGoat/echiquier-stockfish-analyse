@@ -16,6 +16,7 @@ import {
   classerCoup,
   momentsCharnieres,
   pdgBlancs,
+  eloEstime,
   precisionCoup,
   precisionPartie,
   SEUILS_PAR_DEFAUT,
@@ -67,11 +68,29 @@ export interface CoupAnalyse {
   estMeilleurCoup: boolean;
 }
 
+/** Moyenne simple, ou `null` si la série est vide. */
+function moyenne(v: number[]): number | null {
+  if (v.length === 0) return null;
+  return Math.round(v.reduce((a, b) => a + b, 0) / v.length);
+}
+
+/** Elo estimé d'un camp, d'après ses pertes en positions non décidées. */
+function eloDe(pertes: number[]): number | null {
+  const m = moyenne(pertes);
+  return m === null ? null : eloEstime(m, pertes.length);
+}
+
 export interface RapportAnalyse {
   fenDepart: string;
   coups: CoupAnalyse[];
   precisionBlancs: number | null;
   precisionNoirs: number | null;
+  /** Perte moyenne en centipions, par camp. */
+  perteMoyenneBlancs: number | null;
+  perteMoyenneNoirs: number | null;
+  /** Elo estimé auquel chaque camp a joué cette partie. */
+  eloBlancs: number | null;
+  eloNoirs: number | null;
   /** Nombre de coups par classement, pour chaque camp. */
   bilanBlancs: Record<Classement, number>;
   bilanNoirs: Record<Classement, number>;
@@ -168,6 +187,10 @@ export async function analyserPartie(
       coups,
       precisionBlancs: null,
       precisionNoirs: null,
+      perteMoyenneBlancs: null,
+      perteMoyenneNoirs: null,
+      eloBlancs: null,
+      eloNoirs: null,
       bilanBlancs: bilanVide(),
       bilanNoirs: bilanVide(),
       momentsCles: [],
@@ -205,6 +228,14 @@ export async function analyserPartie(
 
   const precisionsBlancs: number[] = [];
   const precisionsNoirs: number[] = [];
+  // Pertes en centipions, pour l'Elo estimé. Les positions déjà décidées
+  // sont écartées plus bas : perdre 300 cp quand on est à +2000 ne dit rien
+  // de la force du joueur, et gonflerait la perte moyenne.
+  const pertesBlancs: number[] = [];
+  const pertesNoirs: number[] = [];
+  // Suite des probabilités de gain, pour pondérer la précision par la
+  // volatilité de la position.
+  const pdgSuite: number[] = [];
   const bilanBlancs = bilanVide();
   const bilanNoirs = bilanVide();
 
@@ -298,11 +329,14 @@ export async function analyserPartie(
     coups.push(analyse);
     if (couleur === 'w') {
       precisionsBlancs.push(precision);
+      if (Math.abs(cpAvantBlancs) < 1000) pertesBlancs.push(perteCp);
       bilanBlancs[classement] += 1;
     } else {
       precisionsNoirs.push(precision);
+      if (Math.abs(cpAvantBlancs) < 1000) pertesNoirs.push(perteCp);
       bilanNoirs[classement] += 1;
     }
+    pdgSuite.push(pdgBlancs(avant));
 
     const avancement = (i + 1) / nbCoups;
     surCoupAnalyse?.(analyse, avancement);
@@ -317,8 +351,12 @@ export async function analyserPartie(
   return {
     fenDepart,
     coups,
-    precisionBlancs: precisionPartie(precisionsBlancs),
-    precisionNoirs: precisionPartie(precisionsNoirs),
+    precisionBlancs: precisionPartie(precisionsBlancs, pdgSuite),
+    precisionNoirs: precisionPartie(precisionsNoirs, pdgSuite),
+    perteMoyenneBlancs: moyenne(pertesBlancs),
+    perteMoyenneNoirs: moyenne(pertesNoirs),
+    eloBlancs: eloDe(pertesBlancs),
+    eloNoirs: eloDe(pertesNoirs),
     bilanBlancs,
     bilanNoirs,
     momentsCles: momentsCharnieres(coups, 3),

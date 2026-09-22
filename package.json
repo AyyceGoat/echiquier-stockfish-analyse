@@ -26,7 +26,8 @@
     "test:assiste": "node scripts/test-assiste.mjs",
     "test:rapport": "node scripts/test-rapport.mjs",
     "test:matchs": "node scripts/test-matchs-niveaux.mjs",
-    "portraits": "node scripts/preparer-portraits.mjs"
+    "portraits": "node scripts/preparer-portraits.mjs",
+    "test:precision": "node scripts/test-precision.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",

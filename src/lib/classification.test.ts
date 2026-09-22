@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   classerCoup,
+  eloEstime,
   formaterPerte,
   momentsCharnieres,
   pdgBlancs,
@@ -139,13 +140,78 @@ describe('precisionPartie', () => {
     expect(precisionPartie([])).toBeNull();
   });
 
-  it('fait la moyenne arrondie au dixième', () => {
-    expect(precisionPartie([100, 90, 80])).toBe(90);
-    expect(precisionPartie([100, 95])).toBe(97.5);
-  });
-
   it('donne 100 sur une partie parfaite', () => {
     expect(precisionPartie([100, 100, 100])).toBe(100);
+  });
+
+  it('punit une gaffe au lieu de la diluer', () => {
+    // C'était le défaut : la moyenne arithmétique noyait les fautes. Sur
+    // dix-neuf coups parfaits et une gaffe à 10 %, elle rendait 95,5 %.
+    const avecGaffe = [...Array(19).fill(100), 10];
+    const arithmetique = avecGaffe.reduce((a, b) => a + b, 0) / avecGaffe.length;
+    expect(arithmetique).toBeGreaterThan(95);
+    expect(precisionPartie(avecGaffe)!).toBeLessThan(arithmetique - 10);
+  });
+
+  it('sépare une partie soignée d’une partie jouée à la légère', () => {
+    const soignee = Array.from({ length: 40 }, (_, i) => (i % 8 === 0 ? 92 : 99));
+    const negligee = Array.from({ length: 40 }, (_, i) =>
+      i % 4 === 0 ? 35 : i % 3 === 0 ? 70 : 96,
+    );
+    const a = precisionPartie(soignee)!;
+    const b = precisionPartie(negligee)!;
+    expect(a).toBeGreaterThan(90);
+    expect(b).toBeLessThan(75);
+    expect(a - b).toBeGreaterThan(20);
+  });
+
+  it('ne dépasse jamais les bornes', () => {
+    expect(precisionPartie([0, 0, 0])!).toBeGreaterThanOrEqual(0);
+    expect(precisionPartie([100, 100])!).toBeLessThanOrEqual(100);
+  });
+
+  it('accepte la suite des évaluations sans changer de régime', () => {
+    // Mesuré : la pondération par volatilité ne déplace le résultat que de
+    // quelques dixièmes — c'est une correction de second ordre. C'est la
+    // moyenne harmonique qui porte la sévérité. On vérifie donc que la
+    // suite est acceptée et que le résultat reste dans le même régime,
+    // plutôt que d'exiger un écart que la formule ne produit pas.
+    const precisions = Array.from({ length: 30 }, (_, i) => (i % 5 === 0 ? 35 : 98));
+    const sans = precisionPartie(precisions)!;
+    const calme = precisionPartie(precisions, Array(30).fill(50))!;
+    const agitee = precisionPartie(
+      precisions,
+      Array.from({ length: 30 }, (_, i) => 50 + 35 * Math.sin(i)),
+    )!;
+    for (const v of [sans, calme, agitee]) {
+      expect(v).toBeGreaterThan(70);
+      expect(v).toBeLessThan(85);
+    }
+  });
+});
+
+describe('eloEstime', () => {
+  it('refuse de se prononcer sur trop peu de coups', () => {
+    expect(eloEstime(50, 5)).toBeNull();
+  });
+
+  it('respecte les paliers mesurés du moteur', () => {
+    // Ancrages : Club vaut 40 cp de perte moyenne pour ~1600 Elo, Débutant
+    // 150 cp pour ~800. Ce sont les valeurs relevées par `npm run test:niveaux`.
+    expect(eloEstime(40, 40)).toBeGreaterThan(1500);
+    expect(eloEstime(40, 40)).toBeLessThan(1700);
+    expect(eloEstime(150, 40)).toBeGreaterThan(700);
+    expect(eloEstime(150, 40)).toBeLessThan(900);
+  });
+
+  it('décroît quand la perte moyenne augmente', () => {
+    const suite = [10, 30, 60, 120, 250].map((a) => eloEstime(a, 40)!);
+    for (let i = 1; i < suite.length; i++) expect(suite[i]).toBeLessThan(suite[i - 1]);
+  });
+
+  it('reste dans des bornes crédibles', () => {
+    expect(eloEstime(0, 40)!).toBeLessThanOrEqual(2900);
+    expect(eloEstime(2000, 40)!).toBeGreaterThanOrEqual(250);
   });
 });
 

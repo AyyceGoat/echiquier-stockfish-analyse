@@ -33,6 +33,17 @@ function appliquerTheme(): void {
 
 appliquerTheme();
 
+/**
+ * Écran de lancement : l'API est posée par le document lui-même, avant le
+ * bundle. On la sollicite ici plutôt que d'inventer un minuteur — la jauge
+ * doit refléter le vrai chargement, sinon elle ment.
+ */
+const lancement = (window as unknown as {
+  __lancement?: { avancer: (v: number, t?: string) => void; terminer: () => void };
+}).__lancement;
+
+lancement?.avancer(0.7, 'Interface…');
+
 const racine = document.getElementById('racine');
 if (racine) {
   createRoot(racine).render(
@@ -40,6 +51,21 @@ if (racine) {
       <App />
     </StrictMode>,
   );
+
+  // On attend la première image RÉELLEMENT peinte par React, et non le
+  // simple retour de `render` : à ce moment-là le DOM existe mais n'est pas
+  // encore à l'écran, et la transition découvrirait une page blanche.
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      lancement?.avancer(0.95, 'Presque prêt…');
+      // Les portraits des professeurs sont les seules images que l'accueil
+      // n'affiche pas : on ne les attend pas. Le plateau de vitrine, lui,
+      // est déjà peint à ce stade.
+      lancement?.terminer();
+    });
+  });
+} else {
+  lancement?.terminer();
 }
 
 /**
