@@ -46,6 +46,19 @@ export default defineConfig({
         skipWaiting: false,
         runtimeCaching: [
           {
+            // Portraits des professeurs. Mis en cache à l'usage plutôt que
+            // pré-cachés : cinq largeurs par professeur pèsent un demi-méga,
+            // dont l'appareil ne télécharge en pratique qu'une seule. Le nom
+            // de fichier porte la largeur, donc l'URL est immuable.
+            urlPattern: /\/profs\/[a-z-]+-\d+\.webp$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'portraits-professeurs-v1',
+              expiration: { maxEntries: 40, maxAgeSeconds: 60 * 60 * 24 * 180 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
             // URL versionnee => contenu immuable => CacheFirst sans risque de WASM perime.
             urlPattern: /\/engine\/sf(?:18|19)\/.*\.(?:js|wasm|nnue)$/,
             handler: 'CacheFirst',

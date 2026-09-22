@@ -25,7 +25,8 @@
     "captures": "node scripts/captures-vitrine.mjs",
     "test:assiste": "node scripts/test-assiste.mjs",
     "test:rapport": "node scripts/test-rapport.mjs",
-    "test:matchs": "node scripts/test-matchs-niveaux.mjs"
+    "test:matchs": "node scripts/test-matchs-niveaux.mjs",
+    "portraits": "node scripts/preparer-portraits.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",
