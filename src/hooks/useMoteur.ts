@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { moteurPartage, type EvenementMoteur, type LignePv } from '../engine/moteur.ts';
 import type { NiveauMoteur } from '../lib/niveaux.ts';
+import { choisirCoup, type CandidatCoup } from '../lib/choixCoup.ts';
 
 export function useMoteur() {
   return moteurPartage();
@@ -119,10 +120,28 @@ export function useCoupDuMoteur() {
           niveau,
           // Le temps vient du palier : c'est lui qui définit la force.
           tempsMs: niveau.tempsMs,
-          multiPV: 1,
+          // Plusieurs candidats aux paliers faibles : c'est la matière
+          // première du tirage pondéré, seul levier qui descende sous le
+          // plancher de 1320 d'UCI_Elo.
+          multiPV: niveau.candidats,
           signal: ctrl.signal,
         });
-        return { coup: r.meilleurCoup, erreur: null };
+
+        // Le premier coup de chaque variante est le candidat ; son
+        // évaluation est déjà du point de vue du joueur au trait.
+        const candidats: CandidatCoup[] = r.lignes
+          .filter((l) => l.pv.length > 0)
+          .map((l) => ({ coup: l.pv[0], evaluation: l.evaluation }));
+
+        const choisi = choisirCoup(candidats, {
+          temperatureCp: niveau.temperatureCp,
+          probaBevue: niveau.probaBevue,
+        });
+
+        // Repli sur le `bestmove` du moteur : une recherche interrompue peut
+        // ne renvoyer aucune ligne complète, et il vaut mieux jouer le
+        // meilleur coup que ne pas jouer du tout.
+        return { coup: choisi ?? r.meilleurCoup, erreur: null };
       } catch (e) {
         if (e instanceof DOMException && e.name === 'AbortError') {
           return { coup: null, erreur: null };

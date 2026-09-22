@@ -8,8 +8,12 @@ import {
 } from './niveaux.ts';
 
 describe('table des niveaux', () => {
-  it('propose les six paliers attendus, dans l’ordre croissant', () => {
+  it('propose les sept paliers attendus, dans l’ordre croissant', () => {
+    // « grand-debutant » s'ajoute en tête : le palier 400 Elo réclamé était
+    // inatteignable tant que la force reposait sur UCI_Elo, dont le plancher
+    // est 1320.
     expect(NIVEAUX.map((n) => n.id)).toEqual([
+      'grand-debutant',
       'debutant',
       'amateur',
       'club',
@@ -41,11 +45,33 @@ describe('table des niveaux', () => {
     }
   });
 
-  it('bride la profondeur là où UCI_Elo ne peut pas descendre', () => {
-    // C'est le seul levier sous 1320 Elo : sans lui, « Débutant » jouerait
-    // encore à plus de 1300, ce qui n'est pas un débutant.
+  it('coupe UCI_LimitStrength sous le plancher, pour que Skill Level agisse', () => {
+    // Correction d'un défaut réel : quand `UCI_LimitStrength` est actif,
+    // Stockfish dérive sa force du seul `UCI_Elo` et IGNORE `Skill Level`.
+    // « Débutant » et « Amateur » demandaient tous deux 1320 et jouaient
+    // donc à l'identique, très au-dessus de leur Elo affiché.
+    for (const id of ['grand-debutant', 'debutant', 'amateur']) {
+      const n = niveauParId(id);
+      expect(n.limiterElo).toBe(false);
+      expect(n.uciElo).toBeUndefined();
+    }
+  });
+
+  it('bride la profondeur ET tire parmi plusieurs candidats sous 1320', () => {
+    // Brider la profondeur ne suffit pas : à `depth 1`, la recherche de
+    // quiescence résout toutes les prises et le moteur ne pend jamais une
+    // pièce. Mesuré autour de 1200. C'est le tirage pondéré qui descend
+    // réellement plus bas.
     const debutant = niveauParId('debutant');
-    expect(debutant.profondeurMax).toBe(1);
+    expect(debutant.profondeurMax).toBeLessThanOrEqual(2);
+    expect(debutant.candidats).toBeGreaterThan(1);
+    expect(debutant.temperatureCp).toBeGreaterThan(0);
+
+    const grand = niveauParId('grand-debutant');
+    expect(grand.profondeurMax).toBe(1);
+    expect(grand.temperatureCp).toBeGreaterThan(debutant.temperatureCp);
+    expect(grand.probaBevue).toBeGreaterThan(debutant.probaBevue);
+
     expect(niveauParId('amateur').profondeurMax).toBeLessThanOrEqual(4);
   });
 
