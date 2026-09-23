@@ -62,6 +62,14 @@ import { Chess } from 'chess.js';
 interface Verdict {
   classement: Classement;
   perteCp: number;
+  /**
+   * Évaluation APRÈS le coup, en centipions, du point de vue de l'élève.
+   *
+   * C'est elle qui permet au professeur de dire l'état réel de la partie.
+   * Sans elle, il ne jugeait que la qualité du coup, et félicitait un élève
+   * sur le point d'être maté parce que son coup était le meilleur possible.
+   */
+  cpApres: number;
   /** Perte déjà mise en forme, ou null si l'afficher n'apprendrait rien. */
   perteAffichee: string | null;
   coupJoue: string;
@@ -94,6 +102,8 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
   const [configuree, setConfiguree] = useState(false);
   const [monCamp, setMonCamp] = useState<'w' | 'b'>('w');
   const [verdict, setVerdict] = useState<Verdict | null>(null);
+  /** Commentaires déjà prononcés dans cette partie, pour éviter les redites. */
+  const dejaDites = useRef<string[]>([]);
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [promotionEnAttente, setPromotion] = useState<{ depuis: string; vers: string } | null>(null);
   const [verdictEnCours, setVerdictEnCours] = useState(false);
@@ -205,9 +215,15 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
 
         const pvMeilleure = avantRes.lignes[0]?.pv ?? [];
 
+        // Un mat vaut une position décidée : on le ramène à une valeur
+        // franche plutôt que de laisser un `null` remonter jusqu'au ton.
+        const cpApres =
+          apres.type === 'cp' ? apres.valeur : apres.valeur >= 0 ? 10000 : -10000;
+
         setVerdict({
           classement,
           perteCp,
+          cpApres,
           perteAffichee: formaterPerte(perteCp, avant, apres),
           coupJoue: coupUci,
           meilleurUci,
@@ -234,7 +250,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
       } catch (e) {
         if (e instanceof DOMException && e.name === 'AbortError') return;
         setErreur(
-          e instanceof Error ? e.message : "Le moteur n'a pas pu évaluer ce coup.",
+          e instanceof Error ? e.message : 'Le commentaire n’a pas pu être produit.',
         );
       } finally {
         setVerdictEnCours(false);
@@ -351,11 +367,18 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
         varianteSan: verdict.varianteSan,
         reponseAdverseSan: verdict.reponseAdverseSan,
         perteCp: verdict.perteCp,
+        cpApres: verdict.cpApres,
         explication: verdict.explication,
         eleve: reglages.niveauEleve,
+        dejaDites: dejaDites.current,
       })
       .then((texte) => {
-        if (vivant) setCommentaire(texte);
+        if (!vivant) return;
+        // On retient le commentaire pour que les tournures qu'il contient ne
+        // ressortent pas au coup suivant. Les vingt derniers suffisent : au
+        // delà, une reprise ne s'entend plus.
+        dejaDites.current = [...dejaDites.current, texte].slice(-20);
+        setCommentaire(texte);
       });
     return () => {
       vivant = false;
@@ -407,6 +430,10 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
       partie.reinitialiser(fenDepart);
       setConfiguree(true);
       setVerdict(null);
+      // L'interdiction de répétition vaut À L'INTÉRIEUR d'une partie. Garder
+      // l'historique d'une partie sur l'autre épuiserait les tournures et
+      // forcerait le professeur à se répéter dès la deuxième.
+      dejaDites.current = [];
       setEnregistree(false);
       setErreur(null);
     },
@@ -523,7 +550,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
   return (
     <div className="space-y-4">
       {erreur ? (
-        <Alerte titre="Problème avec le moteur">
+        <Alerte titre={`${prof.nom} ne peut pas répondre`}>
           <p>{erreur}</p>
         </Alerte>
       ) : null}
@@ -580,7 +607,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
               ne bouge pas quand l'indicateur apparaît. */}
           <div className="mt-3 flex min-h-[1.875rem] flex-wrap items-center justify-center gap-x-3 gap-y-1">
             <NiveauActif id={palier.id} />
-            {moteurReflechit ? (
+            {moteurReflechit || etatMoteur.etat === 'telechargement' || etatMoteur.etat === 'demarrage' ? (
               <span className="flex items-center gap-1.5 text-sm text-[var(--color-texte-doux)]">
                 {prof.nom} réfléchit
                 <Points libelle={`${prof.nom} réfléchit`} />
@@ -594,19 +621,24 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
               au-dessus : il disparaît au bout de quelques secondes, et le
               placer plus haut faisait remonter l'échiquier d'un coup — de
               quoi faire tomber à côté un appui déjà engagé. */}
-          {etatMoteur.etat === 'telechargement' ? (
-            <Alerte titre="Téléchargement du moteur" ton="info">
-              Environ 7 Mo, une seule fois. Il restera ensuite disponible hors ligne.
-            </Alerte>
-          ) : null}
+          {/* Aucune mention du moteur ni de son téléchargement.
+              L'élève affronte un professeur, pas un logiciel : le dire
+              casserait l'illusion. Pendant la préparation, le professeur
+              « réfléchit » — c'est le même signal que pendant son tour, et
+              il suffit. */}
 
           {/* Le professeur est là en permanence, du lancement à la fin de
               la partie. Il vivait auparavant DANS la carte de verdict :
               il n'apparaissait donc qu'après un coup, et disparaissait
               entre deux. */}
           <Carte titre={prof.nom}>
-            <div className="flex items-start gap-3">
-              <div className="w-16 shrink-0 sm:w-20">
+            <div className="flex items-start gap-3 sm:gap-4">
+              {/* 96 px sur téléphone, et non 64 : mesuré sur un écran de
+                  360 px, un portrait de 64 px ne laisse rien voir du
+                  personnage — ni le regard, ni la bouche qui s'anime
+                  pendant qu'il parle. La colonne de texte garde environ
+                  trente caractères par ligne, ce qui reste confortable. */}
+              <div className="w-24 shrink-0 sm:w-28">
                 <PortraitProfesseur
                   prof={prof}
                   parle={parleEnCours}

@@ -10,7 +10,7 @@ import {
   type NiveauEleve,
 } from './professeurs.ts';
 import { NIVEAUX } from './niveaux.ts';
-import { REPERES } from './reperesPortraits.ts';
+import { boiteBouche, COTE_SOURCE, REPERES } from './reperesPortraits.ts';
 
 const contexte = (sur: Partial<ContexteCommentaire> = {}): ContexteCommentaire => ({
   classement: 'gaffe',
@@ -19,6 +19,7 @@ const contexte = (sur: Partial<ContexteCommentaire> = {}): ContexteCommentaire =
   varianteSan: ['Td1', 'Dxd1', 'Txd1', 'Cf6'],
   reponseAdverseSan: 'Fxe4',
   perteCp: 320,
+  cpApres: -80,
   explication: {
     phrase: 'Ce coup laisse votre cavalier en e4 en prise.',
     complement: 'La colonne d reste ouverte.',
@@ -63,11 +64,34 @@ describe('table des professeurs', () => {
     }
   });
 
-  it('ne fournit aucune image de bouche pour l’instant', () => {
-    // Le mécanisme existe, mais les portraits actuels ne s'y prêtent pas :
-    // l'ouverture simulée produisait une fente sombre à bords francs. Tant
-    // que ce tableau est vide, l'interface se limite au halo.
-    for (const p of PROFESSEURS) expect(p.bouches).toEqual([]);
+  it('fournit deux états de bouche par professeur', () => {
+    // Pastilles découpées dans de vrais rendus bouche ouverte, pas une
+    // ouverture simulée : la précédente tentative produisait une fente
+    // sombre à bords francs, celle-ci n'invente aucun pixel.
+    for (const p of PROFESSEURS) {
+      expect(p.bouches, p.id).toEqual([
+        `/profs/${p.id}-bouche-entrouverte.webp`,
+        `/profs/${p.id}-bouche-ouverte.webp`,
+      ]);
+    }
+  });
+
+  it('place la pastille de bouche sur la bouche', () => {
+    for (const p of PROFESSEURS) {
+      const r = REPERES[p.id];
+      const b = boiteBouche(r);
+      // Elle englobe la bouche…
+      expect(b.x, p.id).toBeLessThan(r.bouche.cx - r.bouche.rx);
+      expect(b.x + b.w, p.id).toBeGreaterThan(r.bouche.cx + r.bouche.rx);
+      expect(b.y, p.id).toBeLessThan(r.bouche.cy - r.bouche.ry);
+      expect(b.y + b.h, p.id).toBeGreaterThan(r.bouche.cy + r.bouche.ry);
+      // …sans remonter jusqu'aux yeux, sinon le fondu rognerait le regard.
+      expect(b.y, p.id).toBeGreaterThan(Math.max(r.oeilG.cy, r.oeilD.cy));
+      // …et sans déborder de l'image.
+      expect(b.x, p.id).toBeGreaterThanOrEqual(0);
+      expect(b.x + b.w, p.id).toBeLessThanOrEqual(COTE_SOURCE);
+      expect(b.y + b.h, p.id).toBeLessThanOrEqual(COTE_SOURCE);
+    }
   });
 });
 
@@ -187,6 +211,144 @@ describe('commentaireLocal', () => {
           expect(t.length, `${p.id}/${c}/${n.id}`).toBeGreaterThan(10);
         }
       }
+    }
+  });
+});
+
+describe('l’étiquette commande le commentaire', () => {
+  it('ne commente jamais une gaffe comme un coup jouable', async () => {
+    // Défaut relevé : « 52… Rb2 — Gaffe » suivi de « ce coup est jouable
+    // mais passif ». Le motif et le classement sont calculés séparément ;
+    // quand ils se contredisent, c'est l'étiquette qui l'emporte.
+    for (const p of PROFESSEURS) {
+      const t = await commentaireLocal.commenter(
+        p,
+        contexte({
+          classement: 'gaffe',
+          perteCp: 480,
+          explication: {
+            phrase: 'Ce coup est jouable mais passif.',
+            complement: undefined,
+            motif: 'passif',
+          },
+        }),
+      );
+      expect(t, p.id).not.toContain('jouable mais passif');
+      // Et il dit ce que ça coûte.
+      expect(t, p.id).toMatch(/coûte|perd|grave|indéfendable|sérieux|mal|lâch/i);
+      // Et il dit quoi jouer.
+      expect(t, p.id).toContain('Td1');
+    }
+  });
+
+  it('explique pourquoi un coup unique était le seul', async () => {
+    for (const p of PROFESSEURS) {
+      const t = await commentaireLocal.commenter(
+        p,
+        contexte({
+          classement: 'unique',
+          perteCp: 0,
+          meilleurSan: null,
+          explication: {
+            phrase: 'Ce coup ne change pas l’appréciation de la position.',
+            motif: 'sans-consequence',
+          },
+        }),
+      );
+      expect(t, p.id).not.toContain('ne change pas l’appréciation');
+      expect(t, p.id).toMatch(/seul|forcé|contrain|autre continuation|alternative|choix|rien d’autre|que ça/i);
+    }
+  });
+
+  it('n’emploie pas les mêmes mots pour une gaffe et pour un bon coup', async () => {
+    for (const p of PROFESSEURS) {
+      const gaffe = await commentaireLocal.commenter(p, contexte({ classement: 'gaffe' }));
+      const bon = await commentaireLocal.commenter(
+        p,
+        contexte({ classement: 'excellent', perteCp: 0, meilleurSan: null }),
+      );
+      expect(gaffe, p.id).not.toBe(bon);
+    }
+  });
+});
+
+describe('le ton suit la position', () => {
+  const bon = { classement: 'excellent' as const, perteCp: 0, meilleurSan: null };
+
+  it('dit que la position est perdue même quand le coup est le meilleur', async () => {
+    // Le cas signalé : à deux coups du mat, l'élève s'entendait féliciter.
+    for (const p of PROFESSEURS) {
+      const t = await commentaireLocal.commenter(p, contexte({ ...bon, cpApres: -1500 }));
+      expect(t, p.id).toMatch(/perdu|perdue|ne tient plus|très mauvaise/i);
+      // Et il dit comment se défendre.
+      expect(t, p.id).toMatch(/défend|compliqu|gêne|désordre|problème|chance/i);
+    }
+  });
+
+  it('reconnaît la domination', async () => {
+    for (const p of PROFESSEURS) {
+      const t = await commentaireLocal.commenter(p, contexte({ ...bon, cpApres: 1200 }));
+      expect(t, p.id).toMatch(/gagnant|gagnante|gagné|domine|devant|meilleure/i);
+    }
+  });
+
+  it('signale une position inférieure sans dramatiser', async () => {
+    for (const p of PROFESSEURS) {
+      const t = await commentaireLocal.commenter(p, contexte({ ...bon, cpApres: -350 }));
+      expect(t, p.id).toMatch(/inférieure|moins bien|difficulté|difficile/i);
+    }
+  });
+
+  it('ne félicite pas après une faute décisive', async () => {
+    for (const p of PROFESSEURS) {
+      const t = await commentaireLocal.commenter(
+        p,
+        contexte({ classement: 'gaffe', perteCp: 900, cpApres: -1400 }),
+      );
+      expect(t, p.id).not.toMatch(/bravo|excellent|parfait|très bien|bien joué|félicit/i);
+    }
+  });
+
+  it('ne commente pas l’état d’une position équilibrée', async () => {
+    // Répéter « la position est équilibrée » à chaque coup serait aussi
+    // lassant que de ne rien dire quand elle est perdue.
+    for (const p of PROFESSEURS) {
+      const t = await commentaireLocal.commenter(p, contexte({ ...bon, cpApres: 40 }));
+      expect(t, p.id).not.toMatch(/perdue|gagnante|domine/i);
+    }
+  });
+});
+
+describe('absence de redite', () => {
+  it('ne réutilise pas une tournure déjà employée dans la partie', async () => {
+    // Le défaut : « ce coup était la meilleure continuation » revenait sans
+    // arrêt. On simule une partie entière en tenant l'historique comme le
+    // fait l'écran de jeu.
+    const coups = ['Cf3', 'e4', 'd4', 'Fb5', 'O-O', 'Te1', 'c3', 'h3', 'Cbd2', 'Cf1'];
+    for (const p of PROFESSEURS) {
+      const dejaDites: string[] = [];
+      const ouvertures: string[] = [];
+      for (const coupSan of coups) {
+        const t = await commentaireLocal.commenter(
+          p,
+          contexte({
+            classement: 'excellent',
+            perteCp: 0,
+            meilleurSan: null,
+            cpApres: 30,
+            coupSan,
+            explication: { phrase: 'La position reste saine.', motif: 'sans-consequence' },
+            dejaDites,
+          }),
+        );
+        dejaDites.push(t);
+        ouvertures.push(t.split(/(?<=[.!?…])\s/)[0]);
+      }
+      // Les six premiers commentaires doivent tous ouvrir différemment : le
+      // stock de tournures par professeur est plus grand que cela.
+      const six = new Set(ouvertures.slice(0, 6));
+      expect(six.size, `${p.id} : ${ouvertures.slice(0, 6).join(' | ')}`).toBe(6);
+      expect(new Set(dejaDites).size, p.id).toBe(coups.length);
     }
   });
 });

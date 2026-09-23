@@ -17,14 +17,15 @@
  *  4. Halo d'accent pendant la parole, SOUS le portrait : posé par-dessus,
  *     il laverait le visage.
  *
- * Bouche : voir `bouches` dans `professeurs.ts`. Tant qu'aucune image de
- * bouche n'est fournie, seul le halo signale la parole — simuler l'ouverture
- * par transformation produisait une fente sombre à bords francs sur ces
- * portraits, et détachait le cure-dent d'Ephraim de sa lèvre.
+ *  5. Bouche : une pastille découpée dans un VRAI rendu bouche ouverte,
+ *     posée sur le portrait immobile (voir `bouches` dans `professeurs.ts`).
+ *     La tentative précédente simulait l'ouverture par transformation et
+ *     produisait une fente sombre à bords francs ; celle-ci n'invente rien.
+ *     La pastille vit dans `.pp-tete` pour suivre le mouvement de tête.
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { pourcent, REPERES, type Zone } from '../lib/reperesPortraits.ts';
+import { boiteBouche, pourcent, REPERES, type Zone } from '../lib/reperesPortraits.ts';
 import type { FicheProfesseur } from '../lib/professeurs.ts';
 
 /** Largeurs disponibles dans `public/profs`. */
@@ -140,10 +141,14 @@ export function PortraitProfesseur({
     };
   }, [prof.id]);
 
-  /* --- Bouche, si et seulement si des images existent ------------------
-     Le portrait fermé est l'image 0 ; les variantes fournies s'y ajoutent.
-     On alterne pendant la parole, puis on revient au portrait fermé dès que
-     le texte est fini. */
+  /* --- Bouche, si et seulement si des pastilles existent ---------------
+     L'index 0 est la bouche fermée, c'est-à-dire AUCUNE pastille : le
+     portrait d'origine suffit. Les pastilles suivantes s'y superposent.
+
+     Le rythme n'est pas régulier. Une alternance à cadence fixe se lit
+     comme un clignotant ; on tire donc l'état suivant au hasard en
+     interdisant de répéter le précédent, ce qui produit des ouvertures de
+     durées inégales, comme une parole. */
   useEffect(() => {
     if (prof.bouches.length === 0) return;
     if (!parle) {
@@ -151,18 +156,22 @@ export function PortraitProfesseur({
       return;
     }
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    let precedent = 0;
     const t = window.setInterval(() => {
-      setImageBouche(1 + Math.floor(Math.random() * prof.bouches.length));
-    }, 130);
+      let suivant = precedent;
+      while (suivant === precedent) suivant = Math.floor(Math.random() * (prof.bouches.length + 1));
+      precedent = suivant;
+      setImageBouche(suivant);
+    }, 115);
     return () => {
       clearInterval(t);
       setImageBouche(0);
     };
   }, [parle, prof.bouches.length]);
 
-  const source = useMemo(
-    () => (imageBouche === 0 ? `/profs/${prof.id}-512.webp` : prof.bouches[imageBouche - 1]),
-    [imageBouche, prof.bouches, prof.id],
+  const boiteDeLaBouche = useMemo(
+    () => (reperes ? boiteBouche(reperes) : null),
+    [reperes],
   );
 
   if (!reperes) return null;
@@ -183,14 +192,20 @@ export function PortraitProfesseur({
         {/* Portrait de base : c'est lui qui porte le texte alternatif. */}
         <img
           className="pp-image"
-          src={source}
-          srcSet={imageBouche === 0 ? srcSet(prof.id) : undefined}
+          src={`/profs/${prof.id}-512.webp`}
+          srcSet={srcSet(prof.id)}
           sizes="(max-width: 700px) 40vw, 180px"
           alt={`Portrait de ${prof.nom}`}
           draggable={false}
         />
         <div className="pp-tete">
-          <img className="pp-image" src={source} alt="" aria-hidden draggable={false} />
+          <img
+            className="pp-image"
+            src={`/profs/${prof.id}-512.webp`}
+            alt=""
+            aria-hidden
+            draggable={false}
+          />
           <Calque
             id={prof.id}
             classe="pp-paupiere"
@@ -203,6 +218,28 @@ export function PortraitProfesseur({
             zone={boiteDe(reperes.oeilD)}
             srcY={reperes.oeilD.cy - reperes.oeilD.ry * 3}
           />
+          {/* Les deux pastilles sont rendues en permanence et pilotées par
+              l'opacité : les décoder au moment où le professeur ouvre la
+              bouche produirait un trou d'une image à la première syllabe. */}
+          {boiteDeLaBouche
+            ? prof.bouches.map((src, i) => (
+                <img
+                  key={src}
+                  className="pp-bouche"
+                  src={src}
+                  alt=""
+                  aria-hidden
+                  draggable={false}
+                  style={{
+                    left: pourcent(boiteDeLaBouche.x),
+                    top: pourcent(boiteDeLaBouche.y),
+                    width: pourcent(boiteDeLaBouche.w),
+                    height: pourcent(boiteDeLaBouche.h),
+                    opacity: imageBouche === i + 1 ? 1 : 0,
+                  }}
+                />
+              ))
+            : null}
         </div>
       </div>
       {/* Les refs sont posées après coup : `Calque` rend deux nœuds dont on

@@ -796,6 +796,18 @@ input[type='range']:active::-webkit-slider-thumb {
   will-change: transform;
 }
 
+/* Pastille de bouche : un fragment d'un vrai rendu bouche ouverte, à bord
+   d'alpha fondu, posé sur le portrait immobile. Seule l'opacité change —
+   aucune déformation, donc aucune fente à bords francs comme dans la
+   première tentative. La transition est courte : au-delà de 70 ms, les deux
+   états se superposent et la bouche paraît dédoublée. */
+.pp-bouche {
+  position: absolute;
+  pointer-events: none;
+  transition: opacity 60ms linear;
+  will-change: opacity;
+}
+
 @keyframes pp-respiration {
   0%,
   100% {
@@ -877,5 +889,12 @@ input[type='range']:active::-webkit-slider-thumb {
   .pp-entre {
     animation: none !important;
     transform: none !important;
+  }
+
+  /* Bouche figée fermée : l'alternance est déjà coupée côté JavaScript, la
+     règle garantit qu'aucune pastille ne reste allumée. */
+  .pp-bouche {
+    opacity: 0 !important;
+    transition: none !important;
   }
 }

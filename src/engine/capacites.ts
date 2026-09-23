@@ -210,8 +210,17 @@ export function urlsMoteur(
 }
 
 /** Nom lisible d'une variante, pour le diagnostic. */
+/**
+ * Nom affichable d'une variante.
+ *
+ * Le nom du logiciel n'apparaît nulle part dans l'interface : l'élève
+ * affronte un professeur, pas un programme, et le nommer suffit à défaire
+ * le personnage. On décrit donc la variante par ce qu'elle change —
+ * génération et parallélisme — ce qui est aussi la seule chose utile au
+ * diagnostic.
+ */
 export function nomVariante(v: VarianteMoteur): string {
-  if (v === 'sf19') return 'Stockfish 19 (multi-thread)';
-  if (v === 'multithread') return 'Stockfish 18 Lite (multi-thread)';
-  return 'Stockfish 18 Lite (mono-thread)';
+  if (v === 'sf19') return 'Analyse 19 (multi-thread)';
+  if (v === 'multithread') return 'Analyse 18 allégée (multi-thread)';
+  return 'Analyse 18 allégée (mono-thread)';
 }
