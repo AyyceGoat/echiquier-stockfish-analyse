@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   classerCoup,
+  COUPS_MIN_ELO,
   eloEstime,
   formaterPerte,
   momentsCharnieres,
@@ -195,13 +196,31 @@ describe('eloEstime', () => {
     expect(eloEstime(50, 5)).toBeNull();
   });
 
-  it('respecte les paliers mesurés du moteur', () => {
-    // Ancrages : Club vaut 40 cp de perte moyenne pour ~1600 Elo, Débutant
-    // 150 cp pour ~800. Ce sont les valeurs relevées par `npm run test:niveaux`.
-    expect(eloEstime(40, 40)).toBeGreaterThan(1500);
-    expect(eloEstime(40, 40)).toBeLessThan(1700);
-    expect(eloEstime(150, 40)).toBeGreaterThan(700);
-    expect(eloEstime(150, 40)).toBeLessThan(900);
+  it('retombe sur les paliers mesurés en partie réelle', () => {
+    // Ancrages relevés par `npm run test:elo` : chaque palier joue contre
+    // lui-même et l'application analyse la partie. Ce sont les pertes
+    // moyennes que l'analyse produit RÉELLEMENT, filtre et plafond compris —
+    // les anciens ancrages venaient d'un autre calcul, d'où une
+    // surévaluation de tous les paliers.
+    const tolerance = 250;
+    for (const [perte, attendu] of [
+      [176, 400],
+      [122, 800],
+      [66, 1200],
+      [26, 1600],
+      [10, 2000],
+      [4, 2400],
+    ] as const) {
+      const e = eloEstime(perte, 40)!;
+      expect(Math.abs(e - attendu), `${perte} cp → ${e}`).toBeLessThan(tolerance);
+    }
+  });
+
+  it('refuse de se prononcer sur un échantillon trop court', () => {
+    // Une partie tranchée tôt ne laisse que des coups d'ouverture : la
+    // moyenne n'y mesure plus le niveau du joueur.
+    expect(eloEstime(30, COUPS_MIN_ELO - 1)).toBeNull();
+    expect(eloEstime(30, COUPS_MIN_ELO)).not.toBeNull();
   });
 
   it('décroît quand la perte moyenne augmente', () => {

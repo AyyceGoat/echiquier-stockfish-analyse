@@ -96,6 +96,9 @@ export function PartieLibre({ naviguer }: { naviguer: (v: string) => void }) {
       id: idPartie,
       date: Date.now(),
       mode: 'libre',
+      // Le camp du joueur est enregistré explicitement : « mes erreurs » en
+      // dépend pour ne compter que SES coups.
+      monCamp: adversaire === 'humain' ? undefined : monCamp,
       blanc: adversaire === 'moteur' && monCamp === 'b' ? `Ordinateur (${niveauParId(reglages.niveauMoteur).libelle})` : 'Moi',
       noir: adversaire === 'moteur' && monCamp === 'w' ? `Ordinateur (${niveauParId(reglages.niveauMoteur).libelle})` : adversaire === 'humain' ? 'Adversaire' : 'Moi',
       resultat: fin.resultat,

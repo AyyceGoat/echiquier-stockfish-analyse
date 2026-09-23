@@ -259,30 +259,55 @@ export function precisionPartie(precisions: number[], pdgSuccessives?: number[])
  * centipions.
  *
  * La courbe n'est pas tirée d'un article : elle est calée sur l'échelle de
- * force de CE moteur, dont les paliers sont eux-mêmes vérifiés par des
- * matchs (`npm run test:matchs`). Les pertes moyennes mesurées par
- * `npm run test:niveaux` servent de points d'ancrage, ce qui rend
- * l'estimation cohérente avec l'adversaire que l'application propose — un
- * joueur qui bat régulièrement le palier « Club » doit lire un Elo proche de
- * 1600.
+ * force de CE moteur, par des parties RÉELLES de chaque palier contre
+ * lui-même (`npm run test:elo`). C'est le seul étalonnage qui vaille, et
+ * l'ancien ne le faisait pas.
+ *
+ * Ce qui n'allait pas. Les ancrages précédents (Club 40 cp → 1600,
+ * Débutant 150 cp → 800) venaient de `test:niveaux`, qui calcule la perte
+ * moyenne sur TOUS les coups, sans plafond ni filtre. L'analyse de
+ * l'application, elle, écarte les positions décidées et plafonne la perte à
+ * 600 cp : elle produit donc un nombre systématiquement plus petit, qui
+ * entrait dans la formule calée sur l'autre grandeur et en ressortait trop
+ * haut. Tous les paliers étaient surévalués, de +110 à +523 Elo, et une
+ * partie ordinaire pouvait afficher 1800.
+ *
+ * Mesuré, deux parties par palier, les deux camps :
+ *
+ *     palier            perte moyenne   ancienne courbe   courbe actuelle
+ *     Grand débutant        176 cp            704               595
+ *     Débutant              122 cp            923               765
+ *     Amateur                66 cp           1300              1059
+ *     Club                   26 cp           1873              1505
+ *     Fort                   10 cp           2454              1958
+ *     Expert                  4 cp           2900              2378
  *
  * Forme retenue : l'Elo décroît linéairement avec le LOGARITHME de la perte
- * moyenne. Une exponentielle simple a d'abord été essayée et ratait tout le
- * milieu de l'échelle — elle plaçait le palier Club, mesuré à 40 cp de perte
- * moyenne, autour de 2070 au lieu de 1600. Les deux coefficients sont résolus
- * sur les ancrages Club (40 cp → 1600) et Débutant (150 cp → 800) :
+ * moyenne — une exponentielle simple ratait tout le milieu de l'échelle. Les
+ * deux coefficients sont ajustés par moindres carrés sur les 24 relevés :
  *
- *     Elo = 3832 − 605 · ln(perte moyenne)
+ *     Elo = 3031 − 471 · ln(perte moyenne)
  *
- * Contrôles : 91 cp donne 1100 pour un palier Amateur annoncé à 1200, et
- * 2 cp sature au plafond, ce qui est le comportement attendu de la pleine
- * force.
+ * Écart absolu moyen de l'ajustement : 155 Elo. C'est l'ordre de grandeur de
+ * ce qu'on peut affirmer sur une seule partie, et il ne faut pas prétendre
+ * mieux.
  */
+/**
+ * Nombre minimal de coups retenus pour oser une estimation.
+ *
+ * Dix était bien trop peu. Une partie tranchée tôt — typiquement contre les
+ * paliers faibles, qui s'effondrent en une douzaine de coups — ne laisse que
+ * des coups d'ouverture dans l'échantillon, là où même un joueur pressé perd
+ * peu. Une seule faute de 300 cp sur dix coups déplace la moyenne de 30 cp,
+ * soit près de 200 Elo. Mieux vaut ne rien annoncer que d'annoncer un
+ * chiffre que la partie ne porte pas.
+ */
+export const COUPS_MIN_ELO = 16;
+
 export function eloEstime(perteMoyenneCp: number, nbCoups: number): number | null {
-  // Sous une dizaine de coups, la perte moyenne ne veut rien dire.
-  if (nbCoups < 10) return null;
+  if (nbCoups < COUPS_MIN_ELO) return null;
   const acpl = Math.max(1, perteMoyenneCp);
-  const elo = 3832 - 605 * Math.log(acpl);
+  const elo = 3031 - 471 * Math.log(acpl);
   return Math.round(Math.max(250, Math.min(2900, elo)) / 10) * 10;
 }
 
