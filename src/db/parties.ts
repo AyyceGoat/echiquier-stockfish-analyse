@@ -25,8 +25,18 @@ export interface PartieEnregistree {
   finPar: string;
   fenDepart: string;
   coupsSan: string[];
-  /** Palier de Stockfish utilisé, si l'adversaire était le moteur. */
+  /** Palier du moteur utilisé, si l'adversaire était l'ordinateur. */
   niveauMoteur?: string;
+  /**
+   * Camp tenu par le joueur.
+   *
+   * Sans ce champ, « de quel côté jouait-il ? » se déduisait du nom « Moi »,
+   * ce qui n'a rien d'une garantie : la section « mes erreurs » comptait les
+   * coups des deux camps et présentait les bévues du moteur comme celles du
+   * joueur. Absent sur les parties enregistrées avant cet ajout, et sur les
+   * parties importées où le joueur ne figure d'aucun côté.
+   */
+  monCamp?: 'w' | 'b';
   rapport?: RapportAnalyse;
 }
 

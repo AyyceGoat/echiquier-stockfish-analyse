@@ -44,6 +44,14 @@ export interface ProprietesEchiquier {
    * régression ; ici la règle tient par construction.
    */
   fleche?: FlecheEchiquier | null;
+  /**
+   * Plusieurs flèches à la fois.
+   *
+   * `fleche` ne montre qu'une intention ; il en faut deux pour opposer le
+   * coup joué au coup attendu, ce que « mes erreurs » doit faire voir d'un
+   * coup d'œil. Les deux propriétés se cumulent.
+   */
+  fleches?: FlecheEchiquier[];
   /** Cases à surligner (analyse, correction). */
   surlignages?: { case: string; classe: string }[];
   coordonnees?: boolean;
@@ -73,6 +81,7 @@ export function Echiquier({
   dernierCoup,
   echec,
   fleche,
+  fleches,
   surlignages,
   coordonnees = true,
   animations = true,
@@ -92,22 +101,29 @@ export function Echiquier({
   rappelCoup.current = onCoup;
   rappelClic.current = onClicCase;
 
+  // Clé de comparaison : les tableaux et objets changent d'identité à chaque
+  // rendu du parent alors que les flèches, elles, ne bougent pas. Sans cela,
+  // Chessground les redessinerait plusieurs fois par seconde pendant une
+  // analyse, ce qui les fait clignoter.
+  const toutes = useMemo(
+    () => [...(fleche ? [fleche] : []), ...(fleches ?? [])],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      fleche?.depuis,
+      fleche?.vers,
+      fleche?.couleur,
+      (fleches ?? []).map((f) => `${f.depuis}${f.vers}${f.couleur ?? ''}`).join('|'),
+    ],
+  );
+
   const formes: DrawShape[] = useMemo(
     () =>
-      fleche
-        ? [
-            {
-              orig: fleche.depuis as Key,
-              dest: fleche.vers as Key,
-              brush: fleche.couleur ?? 'green',
-            },
-          ]
-        : [],
-    // Les champs sont listés un par un : l'objet change d'identité à chaque
-    // rendu du parent, alors que la flèche ne bouge pas. Sans cela,
-    // Chessground redessinerait la flèche plusieurs fois par seconde pendant
-    // une analyse, ce qui la fait clignoter.
-    [fleche?.depuis, fleche?.vers, fleche?.couleur],
+      toutes.map((f) => ({
+        orig: f.depuis as Key,
+        dest: f.vers as Key,
+        brush: f.couleur ?? 'green',
+      })),
+    [toutes],
   );
 
   const dests = useMemo(() => {

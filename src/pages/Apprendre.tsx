@@ -13,15 +13,19 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { listerParties } from '../db/parties.ts';
-import { LIBELLE_MOTIF, type MotifExplication } from '../lib/explications.ts';
+import {
+  compterMesParties,
+  regrouperMesErreurs,
+  type GroupeErreur,
+} from '../lib/mesErreurs.ts';
+import { MesErreurs } from '../ui/MesErreurs.tsx';
 import {
   EXERCICES,
   exercicesParCategorie,
-  exercicesParMotif,
   type Exercice as TypeExercice,
 } from '../lib/exercices.ts';
 import { Exercice } from '../ui/Exercice.tsx';
-import { Bouton, Carte, EnTetePage, Etiquette, Segmente, Squelette } from '../ui/composants.tsx';
+import { Bouton, Carte, EnTetePage, Segmente, Squelette } from '../ui/composants.tsx';
 
 type Onglet = 'bases' | 'tactique' | 'erreurs';
 
@@ -45,45 +49,26 @@ function enregistrerProgres(ids: Set<string>): void {
   }
 }
 
-/** Motifs à compter : ceux qui désignent une erreur, pas un constat neutre. */
-const MOTIFS_ERREUR: MotifExplication[] = [
-  'piece-en-prise',
-  'occasion-manquee',
-  'menace-ignoree',
-  'fourchette',
-  'clouage',
-  'enfilade',
-  'mat-manque',
-  'mat-subi',
-];
-
 export function Apprendre({ naviguer }: { naviguer: (v: string) => void }) {
   const [onglet, setOnglet] = useState<Onglet>('bases');
   const [reussis, setReussis] = useState<Set<string>>(() => chargerProgres());
   const [index, setIndex] = useState(0);
-  const [erreurs, setErreurs] = useState<{ motif: MotifExplication; nombre: number }[]>([]);
-  const [partiesAnalysees, setPartiesAnalysees] = useState<number | null>(null);
+  const [groupes, setGroupes] = useState<GroupeErreur[] | null>(null);
+  const [mesParties, setMesParties] = useState<number | null>(null);
 
-  // Comptage des motifs d'erreur dans les parties déjà analysées.
+  /**
+   * Erreurs du JOUEUR dans SES parties.
+   *
+   * Le décompte portait auparavant sur tous les coups de la partie : les
+   * bévues du moteur étaient comptées comme celles du joueur. Le regroupement
+   * vit maintenant dans `mesErreurs.ts`, où il est vérifié sans navigateur.
+   */
   useEffect(() => {
     let vivant = true;
     listerParties().then((parties) => {
       if (!vivant) return;
-      const avecRapport = parties.filter((p) => p.rapport);
-      const compte = new Map<MotifExplication, number>();
-      for (const p of avecRapport) {
-        for (const c of p.rapport?.coups ?? []) {
-          // On ne compte que les coups réellement fautifs : un motif détecté
-          // sur un bon coup n'est pas une erreur à travailler.
-          if (c.classement !== 'imprecision' && c.classement !== 'erreur' && c.classement !== 'gaffe') {
-            continue;
-          }
-          const m = c.explication?.motif;
-          if (m && MOTIFS_ERREUR.includes(m)) compte.set(m, (compte.get(m) ?? 0) + 1);
-        }
-      }
-      setPartiesAnalysees(avecRapport.length);
-      setErreurs([...compte.entries()].map(([motif, nombre]) => ({ motif, nombre })).sort((a, b) => b.nombre - a.nombre));
+      setMesParties(compterMesParties(parties));
+      setGroupes(regrouperMesErreurs(parties));
     });
     return () => {
       vivant = false;
@@ -93,20 +78,10 @@ export function Apprendre({ naviguer }: { naviguer: (v: string) => void }) {
   const liste: TypeExercice[] = useMemo(() => {
     if (onglet === 'bases') return exercicesParCategorie('bases');
     if (onglet === 'tactique') return exercicesParCategorie('tactique');
-    // Onglet « mes erreurs » : les exercices des motifs les plus fréquents,
-    // dans l'ordre de fréquence.
-    const vus = new Set<string>();
-    const out: TypeExercice[] = [];
-    for (const e of erreurs) {
-      for (const ex of exercicesParMotif(e.motif)) {
-        if (!vus.has(ex.id)) {
-          vus.add(ex.id);
-          out.push(ex);
-        }
-      }
-    }
-    return out;
-  }, [onglet, erreurs]);
+    // L'onglet « mes erreurs » n'a plus d'exercices : il montre les positions
+    // réelles du joueur, ce qu'aucun exercice du catalogue ne peut faire.
+    return [];
+  }, [onglet]);
 
   // Changer d'onglet repart du premier exercice non réussi.
   useEffect(() => {
@@ -149,47 +124,36 @@ export function Apprendre({ naviguer }: { naviguer: (v: string) => void }) {
       />
 
       {onglet === 'erreurs' ? (
-        <Carte titre="Ce que vos parties révèlent">
-          {partiesAnalysees === null ? (
-            // La place est réservée : sans cela, la carte grandissait d'une
-            // ligne à l'autre au moment où l'historique arrivait.
+        mesParties === null || groupes === null ? (
+          // La place est réservée : sans cela, la carte grandissait d'une
+          // ligne à l'autre au moment où l'historique arrivait.
+          <Carte titre="Ce que vos parties révèlent">
             <div className="space-y-2" role="status" aria-label="Lecture de l’historique">
               <Squelette hauteur="1rem" largeur="70%" />
               <Squelette hauteur="1.75rem" largeur="45%" className="rounded-full" />
             </div>
-          ) : partiesAnalysees === 0 ? (
-            <>
-              <p className="text-sm text-[var(--color-texte-doux)]">
-                Aucune partie analysée pour l’instant. Jouez une partie, lancez son analyse, et vos
-                erreurs récurrentes apparaîtront ici avec les exercices correspondants.
-              </p>
-              <Bouton variante="principal" className="mt-3" onClick={() => naviguer('/libre')}>
-                Jouer une partie
-              </Bouton>
-            </>
-          ) : erreurs.length === 0 ? (
+          </Carte>
+        ) : mesParties === 0 ? (
+          <Carte titre="Ce que vos parties révèlent">
             <p className="text-sm text-[var(--color-texte-doux)]">
-              Sur {partiesAnalysees} partie{partiesAnalysees > 1 ? 's' : ''} analysée
-              {partiesAnalysees > 1 ? 's' : ''}, aucun motif d’erreur ne ressort. Continuez à jouer.
+              Aucune de vos parties n’est encore analysée. Jouez une partie, lancez son analyse, et
+              vos erreurs apparaîtront ici, sur vos propres positions.
             </p>
-          ) : (
-            <>
-              <p className="text-sm text-[var(--color-texte-doux)]">
-                Sur {partiesAnalysees} partie{partiesAnalysees > 1 ? 's' : ''} analysée
-                {partiesAnalysees > 1 ? 's' : ''} :
-              </p>
-              <ul className="mt-2 flex flex-wrap gap-2">
-                {erreurs.slice(0, 5).map((e) => (
-                  <li key={e.motif}>
-                    <Etiquette ton="alerte">
-                      {LIBELLE_MOTIF[e.motif]} — {e.nombre} fois
-                    </Etiquette>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </Carte>
+            <Bouton variante="principal" className="mt-3" onClick={() => naviguer('/libre')}>
+              Jouer une partie
+            </Bouton>
+          </Carte>
+        ) : groupes.length === 0 ? (
+          <Carte titre="Ce que vos parties révèlent">
+            <p className="text-sm text-[var(--color-texte-doux)]">
+              Sur {mesParties} partie{mesParties > 1 ? 's' : ''} analysée
+              {mesParties > 1 ? 's' : ''}, aucun motif d’erreur ne ressort dans vos coups. Continuez
+              à jouer.
+            </p>
+          </Carte>
+        ) : (
+          <MesErreurs groupes={groupes} naviguer={naviguer} />
+        )
       ) : null}
 
       {courant ? (

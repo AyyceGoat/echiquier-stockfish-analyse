@@ -44,9 +44,12 @@ const ORDRE_BILAN: Classement[] = [
 
 export function Rapport({
   identifiant,
+  coupDemande = null,
   naviguer,
 }: {
   identifiant: string;
+  /** Demi-coup à ouvrir directement, venu de `?coup=` — « mes erreurs » y renvoie. */
+  coupDemande?: string | null;
   naviguer: (v: string) => void;
 }) {
   const { reglages } = useReglages();
@@ -186,6 +189,26 @@ export function Rapport({
     setIndexVariante(0);
   }, []);
 
+  /**
+   * Ouverture directe sur un coup précis.
+   *
+   * « Mes erreurs » renvoie ici avec le demi-coup en question : arriver au
+   * début de la partie obligerait à le retrouver à la main, alors que c'est
+   * précisément lui qu'on venait revoir. On oriente aussi l'échiquier du
+   * côté de celui qui a joué ce coup.
+   */
+  const coupOuvert = useRef(false);
+  useEffect(() => {
+    if (coupOuvert.current || coupDemande === null || coups.length === 0) return;
+    const ply = Number(coupDemande);
+    if (!Number.isFinite(ply)) return;
+    const i = coups.findIndex((c) => c.ply === ply);
+    if (i < 0) return;
+    coupOuvert.current = true;
+    setOrientation(coups[i].couleur === 'w' ? 'white' : 'black');
+    allerA(i);
+  }, [coupDemande, coups, allerA]);
+
   useRaccourcisClavier({
     precedent: () => allerA(Math.max(-1, index - 1)),
     suivant: () => allerA(Math.min(coups.length - 1, index + 1)),
@@ -321,15 +344,31 @@ export function Rapport({
             <div className="flex items-start justify-around gap-3">
               {(
                 [
-                  ['Blancs', rapport.precisionBlancs, rapport.eloBlancs, rapport.perteMoyenneBlancs],
-                  ['Noirs', rapport.precisionNoirs, rapport.eloNoirs, rapport.perteMoyenneNoirs],
+                  [
+                    partie.blanc,
+                    'Blancs',
+                    rapport.precisionBlancs,
+                    rapport.eloBlancs,
+                    rapport.perteMoyenneBlancs,
+                  ],
+                  [
+                    partie.noir,
+                    'Noirs',
+                    rapport.precisionNoirs,
+                    rapport.eloNoirs,
+                    rapport.perteMoyenneNoirs,
+                  ],
                 ] as const
-              ).map(([camp, precision, elo, perte]) => (
+              ).map(([nom, camp, precision, elo, perte]) => (
                 <div key={camp} className="min-w-0 text-center">
                   <p className="chiffres text-3xl font-semibold">
                     {precision !== null ? `${precision.toFixed(1).replace('.', ',')} %` : '—'}
                   </p>
-                  <p className="mt-0.5 text-xs text-[var(--color-texte-doux)]">{camp}</p>
+                  {/* Le NOM du joueur, pas seulement sa couleur : « Blancs »
+                      et « Noirs » obligeaient à se rappeler de quel côté on
+                      avait joué pour savoir quelle colonne était la sienne. */}
+                  <p className="mt-0.5 truncate text-sm font-medium">{nom}</p>
+                  <p className="text-xs text-[var(--color-texte-doux)]">{camp}</p>
                   {/* Elo estimé : la force à laquelle ce camp a joué CETTE
                       partie, déduite de sa perte moyenne. Ce n'est pas un
                       classement, et le dire évite de le prendre pour tel. */}
@@ -347,7 +386,20 @@ export function Rapport({
                         </>
                       ) : null}
                     </p>
-                  ) : null}
+                  ) : (
+                    // Dire pourquoi, plutôt que de laisser un blanc : une
+                    // partie tranchée tôt ne laisse pas assez de coups
+                    // disputés pour que la moyenne veuille dire quelque chose.
+                    <p className="mt-2 text-xs text-[var(--color-texte-doux)]">
+                      niveau joué
+                      <br />
+                      <span className="text-[var(--color-texte-doux)]">
+                        trop peu de coups
+                        <br />
+                        disputés
+                      </span>
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
@@ -366,8 +418,12 @@ export function Rapport({
               <thead>
                 <tr className="text-xs text-[var(--color-texte-doux)]">
                   <th className="text-left font-normal">Type</th>
-                  <th className="w-12 text-right font-normal">Blancs</th>
-                  <th className="w-12 text-right font-normal">Noirs</th>
+                  <th className="w-16 text-right font-normal">
+                    <span className="block truncate">{partie.blanc}</span>
+                  </th>
+                  <th className="w-16 text-right font-normal">
+                    <span className="block truncate">{partie.noir}</span>
+                  </th>
                 </tr>
               </thead>
               <tbody>

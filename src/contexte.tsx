@@ -96,7 +96,13 @@ export function useReglages(): ValeurContexte {
 }
 
 /** Route courante, dérivée du fragment d'URL. */
-export function useRoute(): { chemin: string; segments: string[]; naviguer: (v: string) => void } {
+export function useRoute(): {
+  chemin: string;
+  segments: string[];
+  /** Paramètres après le « ? » du fragment, par exemple `?coup=42`. */
+  requete: URLSearchParams;
+  naviguer: (v: string) => void;
+} {
   const lire = () => window.location.hash.replace(/^#/, '') || '/';
   const [chemin, setChemin] = useState(lire);
 
@@ -113,7 +119,16 @@ export function useRoute(): { chemin: string; segments: string[]; naviguer: (v: 
     window.scrollTo({ top: 0 });
   }, []);
 
-  const segments = useMemo(() => chemin.split('/').filter(Boolean), [chemin]);
+  // Le fragment peut porter une requête : `#/rapport/abc?coup=42`. Sans
+  // cette séparation, l'identifiant de partie emportait « ?coup=42 » avec
+  // lui et aucune partie n'était trouvée.
+  const [avantRequete, apresRequete] = useMemo(() => {
+    const i = chemin.indexOf('?');
+    return i === -1 ? [chemin, ''] : [chemin.slice(0, i), chemin.slice(i + 1)];
+  }, [chemin]);
 
-  return { chemin, segments, naviguer };
+  const segments = useMemo(() => avantRequete.split('/').filter(Boolean), [avantRequete]);
+  const requete = useMemo(() => new URLSearchParams(apresRequete), [apresRequete]);
+
+  return { chemin: avantRequete, segments, requete, naviguer };
 }

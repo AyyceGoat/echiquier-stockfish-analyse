@@ -331,6 +331,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
       id: idPartie,
       date: Date.now(),
       mode: 'assiste',
+      monCamp,
       blanc: monCamp === 'w' ? 'Moi' : `${prof.nom} (${palier.libelle})`,
       noir: monCamp === 'b' ? 'Moi' : `${prof.nom} (${palier.libelle})`,
       resultat: fin.resultat,
@@ -540,8 +541,16 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
     );
   }
 
+  /**
+   * Barre d'évaluation : uniquement sur la position AFFICHÉE.
+   *
+   * L'évaluation porte sur `fenCourante`, la dernière position de la partie.
+   * En remontant dans les coups, l'échiquier montrait le douzième coup
+   * pendant que la barre décrivait le trentième — la flèche, elle, était
+   * déjà bridée par `surLeDernierCoup`. On applique la même règle.
+   */
   const cpBlancs =
-    evaluation === null
+    evaluation === null || !partie.surLeDernierCoup
       ? null
       : evaluation.type === 'mat'
         ? (evaluation.valeur > 0 ? 1 : -1) * 9000 * (trait === 'w' ? 1 : -1)
@@ -728,12 +737,23 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
           ) : null}
 
           <Carte titre="Analyse en direct">
+            {/* Même règle que la barre : les variantes sont calculées sur la
+                position courante et seraient traduites en notation contre une
+                position différente si l'on a remonté les coups. */}
             <AffichageEval
-              evaluation={analyse.lignes[0]?.evaluation ?? evaluation ?? undefined}
-              profondeur={analyse.profondeur}
+              evaluation={
+                partie.surLeDernierCoup
+                  ? (analyse.lignes[0]?.evaluation ?? evaluation ?? undefined)
+                  : undefined
+              }
+              profondeur={partie.surLeDernierCoup ? analyse.profondeur : 0}
             />
             {analyse.erreur ? (
               <p className="mt-2 text-sm" style={{ color: 'var(--color-danger)' }}>{analyse.erreur}</p>
+            ) : !partie.surLeDernierCoup ? (
+              <p className="mt-2 text-sm text-[var(--color-texte-doux)]">
+                Revenez au dernier coup pour retrouver l’analyse.
+              </p>
             ) : analyse.lignes.length === 0 ? (
               <p className="mt-2 text-sm text-[var(--color-texte-doux)]">
                 {monTour ? 'Recherche en cours…' : 'En attente de votre tour.'}

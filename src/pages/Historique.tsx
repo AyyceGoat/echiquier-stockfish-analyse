@@ -151,7 +151,9 @@ export function Historique({ naviguer }: { naviguer: (v: string) => void }) {
                     p.rapport?.precisionBlancs !== null ? (
                       <>
                         {' '}
-                        · précision {p.rapport.precisionBlancs.toFixed(0)} %/
+                        {/* Les deux nombres suivaient l'ordre blancs/noirs
+                            sans le dire : on nomme les joueurs. */}
+                        · {p.blanc} {p.rapport.precisionBlancs.toFixed(0)} % · {p.noir}{' '}
                         {p.rapport.precisionNoirs?.toFixed(0) ?? '—'} %
                       </>
                     ) : null}

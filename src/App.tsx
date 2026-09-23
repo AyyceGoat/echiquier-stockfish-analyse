@@ -113,7 +113,7 @@ function BandeauMiseAJour() {
 }
 
 function Coque() {
-  const { chemin, segments, naviguer } = useRoute();
+  const { chemin, segments, requete, naviguer } = useRoute();
 
   const racine = segments[0] ?? '';
 
@@ -136,7 +136,13 @@ function Coque() {
       case 'diagnostic':
         return <Diagnostic naviguer={naviguer} />;
       case 'rapport':
-        return <Rapport identifiant={segments[1] ?? ''} naviguer={naviguer} />;
+        return (
+          <Rapport
+            identifiant={segments[1] ?? ''}
+            coupDemande={requete.get('coup')}
+            naviguer={naviguer}
+          />
+        );
       default:
         return (
           <div className="py-16 text-center">
