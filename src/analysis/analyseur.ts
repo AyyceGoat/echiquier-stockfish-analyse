@@ -145,6 +145,26 @@ function cederLeThread(): Promise<void> {
  * Lance `AbortError` si `signal` est déclenché : l'appelant peut alors
  * conserver les coups déjà reçus.
  */
+/**
+ * Plafond de perte par coup, en centipions.
+ *
+ * Fixé au point où la précision d'un coup SATURE. Depuis une position
+ * égale, la précision d'un coup vaut, selon ce qu'il lâche :
+ *
+ *     −100 cp → 66 %      −500 cp → 18 %
+ *     −200 cp → 45 %      −600 cp → 15 %
+ *     −300 cp → 31 %      −1000 cp → 10 %
+ *     −400 cp → 23 %      −3000 cp → 8,5 % (asymptote)
+ *
+ * Passé 600 centipions, la courbe a parcouru l'essentiel de son domaine et
+ * ne bouge presque plus, tandis que la perte brute, elle, continue de
+ * croître sans limite : un seul mat concédé, compté 10 000, portait à lui
+ * seul la moyenne d'une partie honnête au-dessus de celle d'une partie
+ * médiocre sans que la précision bronche. Les deux mesures doivent saturer
+ * ensemble, sinon leur classement diverge.
+ */
+const PLAFOND_PERTE = 600;
+
 export async function analyserPartie(
   moteur: Moteur,
   options: OptionsAnalyse,
@@ -228,14 +248,17 @@ export async function analyserPartie(
 
   const precisionsBlancs: number[] = [];
   const precisionsNoirs: number[] = [];
+  // Probabilités de gain alignées sur chaque camp, pour la pondération par
+  // volatilité. Une série commune aux deux camps était doublement fausse :
+  // elle alternait les points de vue à chaque demi-coup, et son index ne
+  // correspondait pas à celui des précisions d'un seul camp.
+  const pdgSuiteBlancs: number[] = [];
+  const pdgSuiteNoirs: number[] = [];
   // Pertes en centipions, pour l'Elo estimé. Les positions déjà décidées
   // sont écartées plus bas : perdre 300 cp quand on est à +2000 ne dit rien
   // de la force du joueur, et gonflerait la perte moyenne.
   const pertesBlancs: number[] = [];
   const pertesNoirs: number[] = [];
-  // Suite des probabilités de gain, pour pondérer la précision par la
-  // volatilité de la position.
-  const pdgSuite: number[] = [];
   const bilanBlancs = bilanVide();
   const bilanNoirs = bilanVide();
 
@@ -290,6 +313,33 @@ export async function analyserPartie(
     // la chute de probabilité de gain se lit directement.
     const precision = precisionCoup(pdgBlancs(avant), pdgBlancs(apres));
 
+    /**
+     * Le coup compte-t-il dans les notes ?
+     *
+     * Les positions déjà décidées sont écartées — des DEUX mesures, et c'est
+     * le correctif. La précision se fonde sur la chute de probabilité de
+     * gain, laquelle SATURE aux extrêmes : dans une position perdue à
+     * −2000, lâcher 500 centipions de plus ne déplace presque pas la
+     * probabilité, donc ne coûte presque rien en précision. La perte
+     * moyenne, elle, comptait ces coups en plein. Les deux mesures ne
+     * portaient donc pas sur le même ensemble de coups, et une partie à
+     * 1060 cp perdus par coup pouvait ressortir mieux notée qu'une partie à
+     * 620. Mesuré sur le banc de vingt parties.
+     */
+    const pertinent = Math.abs(cpAvantBlancs) < 1000;
+
+    /**
+     * Perte retenue pour la moyenne, PLAFONNÉE.
+     *
+     * Deuxième moitié du correctif. La précision d'un coup est bornée par
+     * zéro : au-delà d'environ dix pions lâchés d'un coup, elle ne peut
+     * plus descendre. La perte moyenne, elle, montait sans limite — un
+     * seul mat concédé (compté 10 000) suffisait à porter la moyenne d'une
+     * partie honnête au-dessus de celle d'une partie médiocre, sans que la
+     * précision bouge. Les deux mesures doivent saturer ensemble.
+     */
+    const perteRetenue = Math.min(perteCp, PLAFOND_PERTE);
+
     const varianteUci = pvMeilleure.slice(0, 5);
     const analyse: CoupAnalyse = {
       ply: i,
@@ -328,15 +378,20 @@ export async function analyserPartie(
 
     coups.push(analyse);
     if (couleur === 'w') {
-      precisionsBlancs.push(precision);
-      if (Math.abs(cpAvantBlancs) < 1000) pertesBlancs.push(perteCp);
+      if (pertinent) {
+        precisionsBlancs.push(precision);
+        pertesBlancs.push(perteRetenue);
+        pdgSuiteBlancs.push(pdgBlancs(avant));
+      }
       bilanBlancs[classement] += 1;
     } else {
-      precisionsNoirs.push(precision);
-      if (Math.abs(cpAvantBlancs) < 1000) pertesNoirs.push(perteCp);
+      if (pertinent) {
+        precisionsNoirs.push(precision);
+        pertesNoirs.push(perteRetenue);
+        pdgSuiteNoirs.push(pdgBlancs(avant));
+      }
       bilanNoirs[classement] += 1;
     }
-    pdgSuite.push(pdgBlancs(avant));
 
     const avancement = (i + 1) / nbCoups;
     surCoupAnalyse?.(analyse, avancement);
@@ -351,8 +406,8 @@ export async function analyserPartie(
   return {
     fenDepart,
     coups,
-    precisionBlancs: precisionPartie(precisionsBlancs, pdgSuite),
-    precisionNoirs: precisionPartie(precisionsNoirs, pdgSuite),
+    precisionBlancs: precisionPartie(precisionsBlancs, pdgSuiteBlancs),
+    precisionNoirs: precisionPartie(precisionsNoirs, pdgSuiteNoirs),
     perteMoyenneBlancs: moyenne(pertesBlancs),
     perteMoyenneNoirs: moyenne(pertesNoirs),
     eloBlancs: eloDe(pertesBlancs),

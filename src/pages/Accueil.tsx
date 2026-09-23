@@ -17,8 +17,7 @@
 
 import { useEffect, useState } from 'react';
 import { listerParties, type PartieEnregistree } from '../db/parties.ts';
-import { useEtatMoteur, useMoteur } from '../hooks/useMoteur.ts';
-import { nomVariante } from '../engine/capacites.ts';
+import { useEtatMoteur } from '../hooks/useMoteur.ts';
 import { Echiquier } from '../ui/Echiquier.tsx';
 import { Bouton, Carte, Etiquette, Squelette } from '../ui/composants.tsx';
 import {
@@ -54,7 +53,7 @@ const MODES = [
   {
     chemin: '/assiste',
     titre: 'Jeu assisté',
-    accroche: 'Stockfish commente pendant que vous jouez.',
+    accroche: 'Un professeur commente pendant que vous jouez.',
     detail:
       'Retour immédiat sur chaque coup, meilleur coup affiché en cas d’erreur, et possibilité de reprendre votre coup.',
     Icone: IconePionAssiste,
@@ -79,7 +78,6 @@ const MODES = [
 
 export function Accueil({ naviguer }: { naviguer: (v: string) => void }) {
   const etatMoteur = useEtatMoteur();
-  const moteur = useMoteur();
   const [recentes, setRecentes] = useState<PartieEnregistree[] | null>(null);
 
   useEffect(() => {
@@ -103,7 +101,7 @@ export function Accueil({ naviguer }: { naviguer: (v: string) => void }) {
       {/* --- Bandeau d'accueil ------------------------------------------- */}
       <section className="grid items-center gap-6 pt-2 lg:grid-cols-[minmax(0,1fr)_auto] lg:gap-10">
         <div className="min-w-0">
-          <p className="sur-titre">Échecs · Stockfish · Hors ligne</p>
+          <p className="sur-titre">Échecs · Analyse · Hors ligne</p>
           <h1 className="titre-ecran mt-2.5 text-[2.125rem] sm:text-[2.75rem] lg:text-[3.25rem]">
             Jouez. Comprenez.
             <br />
@@ -237,25 +235,28 @@ export function Accueil({ naviguer }: { naviguer: (v: string) => void }) {
         </div>
       </section>
 
-      {/* --- État du moteur -------------------------------------------------
+      {/* --- Disponibilité de l'analyse -------------------------------------
           Une ligne, plus une carte : c'est une information de contexte, pas
           une action. Le diagnostic a rejoint les Réglages, où l'on va une
           fois sur cent. La hauteur est fixe pour que le passage de
-          « préparation » à « prêt » ne décale rien. */}
+          « préparation » à « prêt » ne décale rien.
+
+          Aucun nom de logiciel, aucun « téléchargement du moteur » : les
+          professeurs sont des personnages, et nommer la mécanique qui les
+          anime suffit à défaire l'illusion. On dit ce que l'élève peut
+          faire, pas ce que la machine est en train de charger. */}
       <div className="flex min-h-[2.25rem] flex-wrap items-center gap-x-3 gap-y-1.5 border-t border-[var(--color-bordure)] pt-4 text-xs text-[var(--color-texte-doux)]">
         {etatMoteur.etat === 'pret' || etatMoteur.etat === 'recherche' ? (
-          <Etiquette ton="succes">
-            {moteur.varianteChargee ? nomVariante(moteur.varianteChargee) : 'Moteur'} prêt
-          </Etiquette>
+          <Etiquette ton="succes">Analyse prête</Etiquette>
         ) : etatMoteur.etat === 'echec' ? (
-          <Etiquette ton="danger">Moteur indisponible</Etiquette>
+          <Etiquette ton="danger">Analyse indisponible</Etiquette>
         ) : etatMoteur.etat === 'telechargement' ? (
-          <Etiquette ton="info">Téléchargement du moteur…</Etiquette>
+          <Etiquette ton="info">Préparation…</Etiquette>
         ) : (
-          <Etiquette>Chargé à la demande</Etiquette>
+          <Etiquette>Prête à la demande</Etiquette>
         )}
         <span className="min-w-0">
-          Le moteur se télécharge lors de la première analyse, puis reste disponible hors ligne.
+          La première analyse demande quelques secondes ; ensuite tout fonctionne hors ligne.
         </span>
       </div>
     </div>

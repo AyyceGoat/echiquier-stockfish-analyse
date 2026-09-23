@@ -96,8 +96,8 @@ export function PartieLibre({ naviguer }: { naviguer: (v: string) => void }) {
       id: idPartie,
       date: Date.now(),
       mode: 'libre',
-      blanc: adversaire === 'moteur' && monCamp === 'b' ? `Stockfish (${niveauParId(reglages.niveauMoteur).libelle})` : 'Moi',
-      noir: adversaire === 'moteur' && monCamp === 'w' ? `Stockfish (${niveauParId(reglages.niveauMoteur).libelle})` : adversaire === 'humain' ? 'Adversaire' : 'Moi',
+      blanc: adversaire === 'moteur' && monCamp === 'b' ? `Ordinateur (${niveauParId(reglages.niveauMoteur).libelle})` : 'Moi',
+      noir: adversaire === 'moteur' && monCamp === 'w' ? `Ordinateur (${niveauParId(reglages.niveauMoteur).libelle})` : adversaire === 'humain' ? 'Adversaire' : 'Moi',
       resultat: fin.resultat,
       finPar: fin.raison,
       fenDepart: partie.fenDepart,
@@ -175,7 +175,7 @@ export function PartieLibre({ naviguer }: { naviguer: (v: string) => void }) {
             ariaLabel="Adversaire"
             onChange={setAdversaire}
             options={[
-              { valeur: 'moteur', libelle: 'Stockfish' },
+              { valeur: 'moteur', libelle: 'L’ordinateur' },
               { valeur: 'humain', libelle: 'Deux joueurs' },
             ]}
           />
@@ -233,7 +233,7 @@ export function PartieLibre({ naviguer }: { naviguer: (v: string) => void }) {
   return (
     <div className="space-y-4">
       {erreurMoteur ? (
-        <Alerte titre="Le moteur n’a pas pu jouer">
+        <Alerte titre="L’ordinateur n’a pas pu jouer">
           <p>{erreurMoteur}</p>
           <p className="mt-1">
             Vous pouvez continuer à deux joueurs, ou recharger la page pour relancer le moteur.
@@ -274,7 +274,7 @@ export function PartieLibre({ naviguer }: { naviguer: (v: string) => void }) {
             </Bouton>
           </div>
 
-          {/* Hauteur minimale fixée : « Stockfish réfléchit » apparaît et
+          {/* Hauteur minimale fixée : « L’ordinateur réfléchit » apparaît et
               disparaît plusieurs fois par partie, et sans cela la ligne
               passait à deux lignes en 360 px, ce qui faisait remonter
               l'échiquier au moment précis où l'on visait une case. */}
@@ -282,8 +282,8 @@ export function PartieLibre({ naviguer }: { naviguer: (v: string) => void }) {
             {adversaire === 'moteur' ? <NiveauActif id={reglages.niveauMoteur} /> : null}
             {moteurReflechit ? (
               <span className="flex items-center gap-1.5 text-sm text-[var(--color-texte-doux)]">
-                Stockfish réfléchit
-                <Points libelle="Stockfish réfléchit" />
+                L’ordinateur réfléchit
+                <Points libelle="L’ordinateur réfléchit" />
               </span>
             ) : null}
           </div>
@@ -294,8 +294,8 @@ export function PartieLibre({ naviguer }: { naviguer: (v: string) => void }) {
               de quelques secondes et ferait remonter le plateau en pleine
               partie s'il occupait le haut de la page. */}
           {etatMoteur.etat === 'telechargement' && adversaire === 'moteur' ? (
-            <Alerte titre="Téléchargement du moteur" ton="info">
-              Environ 7 Mo, une seule fois. La partie commencera dès qu’il sera prêt.
+            <Alerte titre="Préparation de la partie" ton="info">
+              Quelques secondes la première fois. La partie commencera dès que tout sera prêt.
             </Alerte>
           ) : null}
 

@@ -59,3 +59,20 @@ export const REPERES: Record<string, ReperesPortrait> = {
 
 /** Pourcentage de l'image, pour positionner un calque indépendamment de la taille affichée. */
 export const pourcent = (v: number): string => `${(v / COTE_SOURCE) * 100}%`;
+
+/**
+ * Générosité de la pastille de bouche, en multiples des demi-axes.
+ *
+ * La pastille doit englober la mâchoire, qui s'ouvre avec la bouche, sans
+ * atteindre le nez ni le bord du visage. Ces deux facteurs servent à LA FOIS
+ * au découpage (`scripts/preparer-portraits.mjs`) et au placement à l'écran :
+ * une seule source, sinon la pastille se poserait à côté de la bouche.
+ */
+export const MARGE_BOUCHE = { x: 3.2, y: 4.2 };
+
+/** Boîte de la pastille de bouche, dans le carré de référence. */
+export function boiteBouche(r: ReperesPortrait): { x: number; y: number; w: number; h: number } {
+  const rx = Math.round(r.bouche.rx * MARGE_BOUCHE.x);
+  const ry = Math.round(r.bouche.ry * MARGE_BOUCHE.y);
+  return { x: Math.round(r.bouche.cx - rx), y: Math.round(r.bouche.cy - ry), w: rx * 2, h: ry * 2 };
+}

@@ -95,12 +95,11 @@ export function Diagnostic({ naviguer }: { naviguer: (v: string) => void }) {
     `Threads WebAssembly : ${ouiNon(capacites.wasmThreads)}`,
     `Cœurs logiques : ${capacites.coeurs}`,
     `Mémoire annoncée : ${capacites.memoireGo ?? 'inconnue'} Go`,
-    `Build Stockfish : ${moteur.varianteChargee ? nomVariante(moteur.varianteChargee) : 'non chargé'}`,
+    `Build d’analyse : ${moteur.varianteChargee ? nomVariante(moteur.varianteChargee) : 'non chargé'}`,
     `Threads actifs : ${moteur.profil.threads}`,
     `Table de hachage : ${moteur.profil.hash} Mo`,
     `Profondeur par défaut : ${moteur.profil.profondeurParDefaut}`,
-    `Nom rapporté par le moteur : ${moteur.nomMoteur}`,
-    `État du moteur : ${etatMoteur.etat}`,
+    `État de l’analyse : ${etatMoteur.etat}`,
     `Mode réduit : ${moteur.profil.raisonModeReduit ?? 'non'}`,
     `Reconnaissance active : ${recognizer.nom}`,
     `Service worker : ${swActif === null ? 'inconnu' : ouiNon(swActif)}`,
@@ -119,7 +118,7 @@ export function Diagnostic({ naviguer }: { naviguer: (v: string) => void }) {
       </EnTetePage>
 
       {moteur.profil.raisonModeReduit ? (
-        <Alerte titre="Le moteur tourne en mode réduit" ton="alerte">
+        <Alerte titre="L’analyse tourne en mode réduit" ton="alerte">
           <p>{moteur.profil.raisonModeReduit}</p>
           <p className="mt-1">
             Stockfish fonctionne normalement, sur un seul thread. L’analyse est simplement plus
@@ -165,7 +164,7 @@ export function Diagnostic({ naviguer }: { naviguer: (v: string) => void }) {
       </Carte>
 
       <Carte
-        titre="Moteur Stockfish"
+        titre="Moteur d’analyse"
         action={
           <Bouton variante="discret" onClick={testerMoteur} disabled={testEnCours}>
             {testEnCours ? 'Test en cours…' : 'Tester'}
@@ -176,8 +175,8 @@ export function Diagnostic({ naviguer }: { naviguer: (v: string) => void }) {
           cle="Version"
           valeur={
             moteur.varianteChargee === 'sf19'
-              ? `Stockfish ${VERSION_SF19}`
-              : `Stockfish ${VERSION_SF18} (lite)`
+              ? `${VERSION_SF19}`
+              : `${VERSION_SF18} (allégée)`
           }
         />
         <Ligne
@@ -194,9 +193,8 @@ export function Diagnostic({ naviguer }: { naviguer: (v: string) => void }) {
         <Ligne cle="Temps par coup (analyse)" valeur={`${moteur.profil.tempsParCoupMs} ms`} />
         <Ligne
           cle="Moteurs embarqués"
-          valeur={`SF ${VERSION_SF19} (~1,7 Mo) et SF ${VERSION_SF18} (~7 Mo)`}
+          valeur={`${VERSION_SF19} (~1,7 Mo) et ${VERSION_SF18} (~7 Mo)`}
         />
-        <Ligne cle="Nom rapporté" valeur={moteur.nomMoteur} />
         <Ligne
           cle="État"
           valeur={etatMoteur.etat}

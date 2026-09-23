@@ -287,7 +287,7 @@ export function AnalysePosition({ naviguer }: { naviguer: (v: string) => void })
       ) : null}
 
       {etatMoteur.etat === 'echec' ? (
-        <Alerte titre="Le moteur n’a pas pu démarrer">
+        <Alerte titre="L’analyse n’a pas pu démarrer">
           <p>{etatMoteur.erreur}</p>
           <p className="mt-1">
             L’échiquier reste utilisable pour explorer la position sans évaluation.
