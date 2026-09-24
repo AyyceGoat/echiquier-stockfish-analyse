@@ -16,6 +16,11 @@ import { useBalayage, useRaccourcisClavier } from '../hooks/useRaccourcis.ts';
 import { COULEURS, formaterPerte, LIBELLES, type Classement } from '../lib/classification.ts';
 import { construirePgnAnnote, telechargerTexte } from '../lib/pgn.ts';
 import { formaterEvaluation } from '../lib/uci.ts';
+import {
+  COUPS_MIN_ELO,
+  COUPS_VALEUR_UNIQUE,
+  estimationElo,
+} from '../lib/classification.ts';
 import { Echiquier, type FlecheEchiquier } from '../ui/Echiquier.tsx';
 import { GraphiqueEval } from '../ui/GraphiqueEval.tsx';
 import { ListeCoups } from '../ui/ListeCoups.tsx';
@@ -348,18 +353,21 @@ export function Rapport({
                     partie.blanc,
                     'Blancs',
                     rapport.precisionBlancs,
-                    rapport.eloBlancs,
                     rapport.perteMoyenneBlancs,
+                    rapport.coupsRetenusBlancs,
                   ],
                   [
                     partie.noir,
                     'Noirs',
                     rapport.precisionNoirs,
-                    rapport.eloNoirs,
                     rapport.perteMoyenneNoirs,
+                    rapport.coupsRetenusNoirs,
                   ],
                 ] as const
-              ).map(([nom, camp, precision, elo, perte]) => (
+              ).map(([nom, camp, precision, perte, coupsRetenus]) => {
+                const estimation =
+                  perte !== null ? estimationElo(perte, coupsRetenus ?? 0) : null;
+                return (
                 <div key={camp} className="min-w-0 text-center">
                   <p className="chiffres text-3xl font-semibold">
                     {precision !== null ? `${precision.toFixed(1).replace('.', ',')} %` : '—'}
@@ -372,12 +380,15 @@ export function Rapport({
                   {/* Elo estimé : la force à laquelle ce camp a joué CETTE
                       partie, déduite de sa perte moyenne. Ce n'est pas un
                       classement, et le dire évite de le prendre pour tel. */}
-                  {elo !== null ? (
+                  {estimation !== null ? (
                     <p className="mt-2 text-xs text-[var(--color-texte-doux)]">
                       niveau joué
                       <br />
                       <span className="chiffres text-base font-semibold text-[var(--color-texte)]">
-                        ~{elo} Elo
+                        {estimation.intervalle
+                          ? `${estimation.bas} – ${estimation.haut}`
+                          : `~${estimation.valeur}`}{' '}
+                        Elo
                       </span>
                       {perte !== null ? (
                         <>
@@ -393,7 +404,7 @@ export function Rapport({
                     <p className="mt-2 text-xs text-[var(--color-texte-doux)]">
                       niveau joué
                       <br />
-                      <span className="text-[var(--color-texte-doux)]">
+                      <span>
                         trop peu de coups
                         <br />
                         disputés
@@ -401,8 +412,20 @@ export function Rapport({
                     </p>
                   )}
                 </div>
-              ))}
+                );
+              })}
             </div>
+            {/* Une ligne pour expliquer l'intervalle : sans elle, un lecteur
+                y voit un défaut d'affichage plutôt qu'une incertitude
+                assumée. */}
+            {[rapport.coupsRetenusBlancs, rapport.coupsRetenusNoirs].some(
+              (n) => n >= COUPS_MIN_ELO && n < COUPS_VALEUR_UNIQUE,
+            ) ? (
+              <p className="mt-3 text-center text-xs text-[var(--color-texte-doux)]">
+                Un intervalle est donné quand la partie a été tranchée tôt : trop peu de coups
+                ont été réellement disputés pour avancer une valeur unique.
+              </p>
+            ) : null}
             {rapport.ouverture ? (
               <p className="mt-3 text-center text-sm">
                 <span className="font-mono text-[var(--color-texte-doux)]">

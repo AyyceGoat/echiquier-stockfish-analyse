@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  commentaireFinPartie,
   commentaireLocal,
+  issueDe,
+  salutationDe,
   NIVEAUX_ELEVE,
   palierDuProfesseur,
   PROFESSEUR_PAR_DEFAUT,
@@ -326,8 +329,9 @@ describe('absence de redite', () => {
     // fait l'écran de jeu.
     const coups = ['Cf3', 'e4', 'd4', 'Fb5', 'O-O', 'Te1', 'c3', 'h3', 'Cbd2', 'Cf1'];
     for (const p of PROFESSEURS) {
-      const dejaDites: string[] = [];
+      const memoire = { dites: [] as string[], nouvelles: [] as string[] };
       const ouvertures: string[] = [];
+      const textes: string[] = [];
       for (const coupSan of coups) {
         const t = await commentaireLocal.commenter(
           p,
@@ -338,17 +342,108 @@ describe('absence de redite', () => {
             cpApres: 30,
             coupSan,
             explication: { phrase: 'La position reste saine.', motif: 'sans-consequence' },
-            dejaDites,
+            memoire,
           }),
         );
-        dejaDites.push(t);
+        memoire.dites.push(...memoire.nouvelles);
+        memoire.nouvelles = [];
+        textes.push(t);
         ouvertures.push(t.split(/(?<=[.!?…])\s/)[0]);
       }
       // Les six premiers commentaires doivent tous ouvrir différemment : le
       // stock de tournures par professeur est plus grand que cela.
       const six = new Set(ouvertures.slice(0, 6));
       expect(six.size, `${p.id} : ${ouvertures.slice(0, 6).join(' | ')}`).toBe(6);
-      expect(new Set(dejaDites).size, p.id).toBe(coups.length);
+      expect(new Set(textes).size, p.id).toBe(coups.length);
+    }
+  });
+});
+
+describe('fin de partie', () => {
+  const finDe = (sur: Partial<Parameters<typeof commentaireFinPartie>[1]> = {}) => ({
+    issue: 'victoire' as const,
+    raison: 'échec et mat',
+    nbCoups: 40,
+    pireCoup: null,
+    beauCoup: null,
+    eleve: 'intermediaire' as NiveauEleve,
+    ...sur,
+  });
+
+  it('traduit résultat et camp en issue vécue', () => {
+    expect(issueDe('1-0', 'w', 'mat')).toBe('victoire');
+    expect(issueDe('1-0', 'b', 'mat')).toBe('defaite');
+    expect(issueDe('0-1', 'b', 'mat')).toBe('victoire');
+    expect(issueDe('0-1', 'w', 'mat')).toBe('defaite');
+    expect(issueDe('1/2-1/2', 'w', 'pat')).toBe('nulle');
+    // L'abandon prime : c'est la manière de finir qui compte, pas le score.
+    expect(issueDe('0-1', 'w', 'abandon des blancs')).toBe('abandon');
+  });
+
+  it('parle de la partie achevée, pour les quatre issues et les quatre professeurs', () => {
+    for (const p of PROFESSEURS) {
+      for (const issue of ['victoire', 'defaite', 'nulle', 'abandon'] as const) {
+        const t = commentaireFinPartie(p, finDe({ issue }));
+        expect(t.length, `${p.id}/${issue}`).toBeGreaterThan(20);
+        // Aucun présent de commentaire de coup : on parle au passé.
+        expect(t, `${p.id}/${issue}`).not.toMatch(/il fallait jouer|d’abord\./i);
+      }
+    }
+  });
+
+  it('désigne le coup qui a fait basculer la partie', () => {
+    const t = commentaireFinPartie(professeurParId('ephraim'), finDe({
+      issue: 'defaite',
+      pireCoup: { san: 'Cf6', ply: 33, perteCp: 420, classement: 'gaffe', motif: 'piece-en-prise' },
+    }));
+    expect(t).toContain('17… Cf6');
+    expect(t).toContain('4,2 pion');
+    // Et la leçon qui va avec le motif.
+    expect(t).toMatch(/attaquants et les défenseurs/);
+  });
+
+  it('ne désigne pas un coup anodin comme le moment décisif', () => {
+    const t = commentaireFinPartie(professeurParId('johana'), finDe({
+      issue: 'defaite',
+      pireCoup: { san: 'h6', ply: 20, perteCp: 40, classement: 'imprecision' },
+    }));
+    expect(t).not.toContain('11. h6');
+  });
+
+  it('ne salue un beau coup que si la partie n’est pas gagnée', () => {
+    const beauCoup = { san: 'Txe6', ply: 24, perteCp: 0, classement: 'excellent' as const };
+    const perdue = commentaireFinPartie(professeurParId('serena'), finDe({ issue: 'defaite', beauCoup }));
+    const gagnee = commentaireFinPartie(professeurParId('serena'), finDe({ issue: 'victoire', beauCoup }));
+    expect(perdue).toContain('13. Txe6');
+    expect(gagnee).not.toContain('13. Txe6');
+  });
+
+  it('ne répète pas la même conclusion d’une partie à l’autre', () => {
+    for (const p of PROFESSEURS) {
+      const memoire = { dites: [] as string[], nouvelles: [] as string[] };
+      const vus = new Set<string>();
+      for (let partie = 0; partie < 5; partie++) {
+        const t = commentaireFinPartie(p, finDe({ issue: 'victoire', nbCoups: 30 + partie, memoire }));
+        memoire.dites.push(...memoire.nouvelles);
+        memoire.nouvelles = [];
+        vus.add(t);
+      }
+      expect(vus.size, p.id).toBe(5);
+    }
+  });
+});
+
+describe('salutationDe', () => {
+  it('ne redonne pas le même accueil de partie en partie', () => {
+    for (const p of PROFESSEURS) {
+      const memoire = { dites: [] as string[], nouvelles: [] as string[] };
+      const vues = new Set<string>();
+      for (let i = 0; i < 8; i++) {
+        vues.add(salutationDe(p, memoire));
+        memoire.dites.push(...memoire.nouvelles);
+        memoire.nouvelles = [];
+      }
+      expect(vues.size, p.id).toBe(8);
     }
   });
 });

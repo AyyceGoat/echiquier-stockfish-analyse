@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   classerCoup,
   COUPS_MIN_ELO,
+  COUPS_VALEUR_UNIQUE,
   eloEstime,
+  estimationElo,
   formaterPerte,
+  PLAFOND_PERTE,
   momentsCharnieres,
   pdgBlancs,
   precisionCoup,
@@ -113,28 +116,61 @@ describe('classerCoup', () => {
 });
 
 describe('precisionCoup', () => {
-  it('donne 100 % pour un coup parfait', () => {
-    expect(precisionCoup(50, 50)).toBeCloseTo(100, 0);
+  it('donne 100 % pour un coup sans perte', () => {
+    expect(precisionCoup(0)).toBeCloseTo(100, 0);
   });
 
-  it('décroît avec la chute de probabilité de gain', () => {
-    const a = precisionCoup(50, 45);
-    const b = precisionCoup(50, 30);
-    const c = precisionCoup(50, 10);
-    expect(a).toBeGreaterThan(b);
-    expect(b).toBeGreaterThan(c);
+  it('décroît quand la perte augmente, sans exception', () => {
+    // C'est LA propriété qui manquait : l'ancienne formule, fondée sur la
+    // probabilité de gain, notait 100 % tout coup joué dans une position
+    // décidée, y compris un coup lâchant 486 centipions.
+    let precedent = Infinity;
+    for (let perte = 0; perte <= 1200; perte += 25) {
+      const p = precisionCoup(perte);
+      expect(p, `${perte} cp`).toBeLessThanOrEqual(precedent);
+      precedent = p;
+    }
+  });
+
+  it('épouse l’ancienne courbe sur le domaine disputé', () => {
+    // Les valeurs de référence sont celles que produisait la formule de
+    // Lichess depuis une position égale. On ne change pas l'échelle ressentie.
+    for (const [perte, attendu] of [
+      [50, 81],
+      [100, 66],
+      [200, 45],
+      [300, 31],
+    ] as const) {
+      expect(Math.abs(precisionCoup(perte) - attendu), `${perte} cp`).toBeLessThan(3);
+    }
+  });
+
+  it('continue de descendre là où l’ancienne plafonnait', () => {
+    // L'ancienne formule ne descendait pas sous 9,9 % quelle que soit la
+    // perte. Celle-ci atteint le plancher.
+    expect(precisionCoup(1000)).toBeLessThan(6);
+    expect(precisionCoup(600)).toBeLessThan(precisionCoup(300));
+  });
+
+  it('plafonne la perte prise en compte', () => {
+    // Au-delà du plafond, deux catastrophes se valent : inutile de
+    // distinguer un coup qui perd dix pions d'un qui en perd cent.
+    expect(precisionCoup(PLAFOND_PERTE)).toBe(precisionCoup(PLAFOND_PERTE * 10));
   });
 
   it('reste borné entre 0 et 100', () => {
-    expect(precisionCoup(100, 0)).toBeGreaterThanOrEqual(0);
-    expect(precisionCoup(100, 0)).toBeLessThanOrEqual(100);
-    expect(precisionCoup(0, 100)).toBeLessThanOrEqual(100);
+    for (const perte of [-500, 0, 1, 9999]) {
+      expect(precisionCoup(perte)).toBeGreaterThanOrEqual(0);
+      expect(precisionCoup(perte)).toBeLessThanOrEqual(100);
+    }
   });
 
-  it('ne pénalise pas une amélioration', () => {
-    expect(precisionCoup(40, 60)).toBeCloseTo(100, 0);
+  it('ne pénalise pas une perte négative', () => {
+    // Le moteur voit parfois mieux après coup : le coup n'a rien coûté.
+    expect(precisionCoup(-40)).toBeCloseTo(100, 0);
   });
 });
+
 
 describe('precisionPartie', () => {
   it('renvoie null sans aucun coup', () => {
@@ -196,24 +232,27 @@ describe('eloEstime', () => {
     expect(eloEstime(50, 5)).toBeNull();
   });
 
-  it('retombe sur les paliers mesurés en partie réelle', () => {
-    // Ancrages relevés par `npm run test:elo` : chaque palier joue contre
-    // lui-même et l'application analyse la partie. Ce sont les pertes
-    // moyennes que l'analyse produit RÉELLEMENT, filtre et plafond compris —
-    // les anciens ancrages venaient d'un autre calcul, d'où une
-    // surévaluation de tous les paliers.
-    const tolerance = 250;
+  it('retombe exactement sur les paliers mesurés', () => {
+    // Ancrages relevés par `npm run test:elo` en faisant s'affronter des
+    // paliers voisins. L'interpolation passe par eux, donc l'écart est nul.
     for (const [perte, attendu] of [
-      [176, 400],
-      [122, 800],
-      [66, 1200],
-      [26, 1600],
+      [123, 400],
+      [94, 800],
+      [56, 1200],
+      [36, 1600],
       [10, 2000],
-      [4, 2400],
+      [5, 2400],
     ] as const) {
-      const e = eloEstime(perte, 40)!;
-      expect(Math.abs(e - attendu), `${perte} cp → ${e}`).toBeLessThan(tolerance);
+      expect(eloEstime(perte, 40), `${perte} cp`).toBe(attendu);
     }
+  });
+
+  it('interpole entre deux paliers sans sauter', () => {
+    // Entre Débutant et Amateur, une perte intermédiaire doit donner un Elo
+    // intermédiaire — et non l'un des deux ancrages.
+    const e = eloEstime(72, 40)!;
+    expect(e).toBeGreaterThan(800);
+    expect(e).toBeLessThan(1200);
   });
 
   it('refuse de se prononcer sur un échantillon trop court', () => {
@@ -301,5 +340,41 @@ describe('formaterPerte', () => {
     expect(
       formaterPerte(9700, { type: 'mat', valeur: 2 }, { type: 'cp', valeur: 300 }),
     ).toBeNull();
+  });
+});
+
+describe('estimationElo', () => {
+  it('ne se prononce pas sous le seuil de coups disputés', () => {
+    expect(estimationElo(60, COUPS_MIN_ELO - 1)).toBeNull();
+  });
+
+  it('donne un intervalle quand la fenêtre est courte', () => {
+    const e = estimationElo(60, COUPS_MIN_ELO)!;
+    expect(e.intervalle).toBe(true);
+    expect(e.bas).toBeLessThan(e.valeur);
+    expect(e.haut).toBeGreaterThan(e.valeur);
+  });
+
+  it('donne une valeur unique quand la partie la porte', () => {
+    expect(estimationElo(60, COUPS_VALEUR_UNIQUE)!.intervalle).toBe(false);
+  });
+
+  it('resserre l’intervalle quand les coups disputés se multiplient', () => {
+    // L'incertitude d'échantillonnage décroît en racine du nombre de coups :
+    // annoncer la même largeur sur seize et sur soixante coups serait faux.
+    const court = estimationElo(60, 16)!;
+    const long = estimationElo(60, 64)!;
+    expect(long.haut - long.bas).toBeLessThan(court.haut - court.bas);
+  });
+
+  it('reste dans les bornes affichables', () => {
+    for (const [perte, coups] of [
+      [1, 40],
+      [2000, 40],
+    ] as const) {
+      const e = estimationElo(perte, coups)!;
+      expect(e.bas).toBeGreaterThanOrEqual(250);
+      expect(e.haut).toBeLessThanOrEqual(2900);
+    }
   });
 });

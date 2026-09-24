@@ -7,12 +7,16 @@
  * perte est élevée, plus la précision est basse — sans jamais vérifier
  * qu'un palier annoncé à 800 Elo ressort bien autour de 800.
  *
- * Ici, chaque palier joue contre lui-même, par le chemin réel du jeu
- * (`choisirCoup`, mêmes options UCI, même profondeur). La partie est ensuite
- * analysée par le rapport de l'application. Les deux camps ayant joué au
- * même palier, les deux Elo estimés doivent tomber ensemble ET près du
- * palier annoncé. Toute asymétrie entre blancs et noirs est alors un défaut
- * d'attribution, pas du bruit.
+ * Les paliers jouent les uns CONTRE LES AUTRES, et non contre eux-mêmes.
+ * C'est la correction de méthode : en auto-affrontement les deux camps sont
+ * de force égale, la partie reste disputée, et le biais qui gonflait
+ * l'estimation du camp dominant restait invisible. Une partie réelle contre
+ * un adversaire de force très différente sort de la zone disputée en une
+ * dizaine de coups — c'est exactement le cas signalé, un palier Débutant
+ * ressorti à 2190 Elo.
+ *
+ * Chaque partie fournit DEUX relevés, un par camp, chacun comparé au palier
+ * que ce camp a réellement utilisé.
  *
  * Usage : node scripts/test-elo-paliers.mjs [url] [parties-par-palier]
  */
@@ -104,24 +108,33 @@ async function installer() {
   });
 }
 
-/** Joue une partie entière, un palier contre lui-même. */
-function jouerUnePartie(id, coupsMax, graine, profondeurPleine) {
+/** Joue une partie entière entre DEUX paliers. */
+function jouerUnePartie(idBlancs, idNoirs, coupsMax, graine, profondeurPleine) {
   return page.evaluate(
-    async (id, coupsMax, graineTirage, profondeurPleine) => {
+    async (idBlancs, idNoirs, coupsMax, graineTirage, profondeurPleine) => {
       const { Chess, choisirCoup, niveauParId } = window.__banc;
-      const n = niveauParId(id);
+      const nB = niveauParId(idBlancs);
+      const nN = niveauParId(idNoirs);
       const m = await window.__moteurPartage();
 
       m.envoyer('setoption name Hash value 32');
       m.envoyer('ucinewgame');
-      m.envoyer(`setoption name MultiPV value ${n.candidats}`);
-      if (n.limiterElo && n.uciElo) {
-        m.envoyer('setoption name UCI_LimitStrength value true');
-        m.envoyer(`setoption name UCI_Elo value ${n.uciElo}`);
-      } else {
-        m.envoyer('setoption name UCI_LimitStrength value false');
-      }
-      m.envoyer(`setoption name Skill Level value ${n.skill}`);
+
+      // Les options UCI sont réappliquées à chaque changement de camp : les
+      // deux paliers ne partagent ni la limitation de force ni MultiPV.
+      let courant = null;
+      const appliquer = (n) => {
+        if (courant === n.id) return;
+        m.envoyer(`setoption name MultiPV value ${n.candidats}`);
+        if (n.limiterElo && n.uciElo) {
+          m.envoyer('setoption name UCI_LimitStrength value true');
+          m.envoyer(`setoption name UCI_Elo value ${n.uciElo}`);
+        } else {
+          m.envoyer('setoption name UCI_LimitStrength value false');
+        }
+        m.envoyer(`setoption name Skill Level value ${n.skill}`);
+        courant = n.id;
+      };
 
       const generateur = (g) => () => {
         g |= 0;
@@ -135,6 +148,8 @@ function jouerUnePartie(id, coupsMax, graine, profondeurPleine) {
       const jeu = new Chess();
       const coups = [];
       while (coups.length < coupsMax && !jeu.isGameOver()) {
+        const n = jeu.turn() === 'w' ? nB : nN;
+        appliquer(n);
         m.envoyer(`position startpos${coups.length ? ' moves ' + coups.join(' ') : ''}`);
         m.envoyer(`go depth ${n.profondeurMax ?? profondeurPleine}`);
         const { bestmove, candidats } = await m.jusquAuBestmove();
@@ -154,7 +169,8 @@ function jouerUnePartie(id, coupsMax, graine, profondeurPleine) {
       }
       return { san: jeu.history(), fin: jeu.isGameOver() };
     },
-    id,
+    idBlancs,
+    idNoirs,
     coupsMax,
     graine,
     profondeurPleine,
@@ -229,23 +245,59 @@ const PALIERS = await page.evaluate(() =>
   window.__banc.NIVEAUX.map((n) => ({ id: n.id, libelle: n.libelle, elo: n.elo })),
 );
 
+/**
+ * Paires contrastées : chaque palier affronte un adversaire d'un autre
+ * niveau, et chacun apparaît au moins deux fois, dans les deux couleurs.
+ * C'est ce déséquilibre qui fait sortir la partie de la zone disputée et
+ * révèle le biais que l'auto-affrontement masquait.
+ */
+const PAIRES = [
+  // Paliers VOISINS : la partie reste disputée assez longtemps pour que la
+  // fenêtre de mesure ait un sens. Opposer 400 à 2400 ne mesure rien —
+  // la partie est tranchée avant que l'échantillon soit constitué, et
+  // l'application refuse alors de se prononcer, ce qui est le comportement
+  // voulu mais ne calibre rien.
+  ['grand-debutant', 'debutant'],
+  ['debutant', 'amateur'],
+  ['amateur', 'club'],
+  ['club', 'fort'],
+  ['fort', 'expert'],
+  ['expert', 'maximum'],
+  ['debutant', 'grand-debutant'],
+  ['amateur', 'debutant'],
+  ['club', 'amateur'],
+  ['fort', 'club'],
+  ['expert', 'fort'],
+  ['maximum', 'expert'],
+];
+
 const releves = [];
 let compteur = 0;
-for (const palier of PALIERS) {
-  for (let k = 0; k < PARTIES; k++) {
+for (let tour = 0; tour < PARTIES; tour++) {
+  for (const [a, b] of PAIRES) {
+    // Couleurs inversées au second tour : l'avantage du trait ne doit pas
+    // se confondre avec un écart de palier.
+    const [idBlancs, idNoirs] = tour % 2 === 0 ? [a, b] : [b, a];
     if (compteur > 0 && compteur % PARTIES_PAR_SESSION === 0) await ouvrirSession();
     compteur++;
-    const nom = `${palier.id}-${k}`;
+    const nom = `${idBlancs}-vs-${idNoirs}-${tour}`;
     let r = null;
     for (let essai = 0; essai < 2 && !r; essai++) {
       try {
         await page.goto(`${BASE}/#/`, { waitUntil: 'networkidle2', timeout: 60000 });
         await installer();
-        const { san } = await jouerUnePartie(palier.id, COUPS_MAX, 7000 + compteur * 131, PROFONDEUR_PLEINE);
+        const { san } = await jouerUnePartie(
+          idBlancs,
+          idNoirs,
+          COUPS_MAX,
+          7000 + compteur * 131,
+          PROFONDEUR_PLEINE,
+        );
         if (san.length < 20) throw new Error(`partie trop courte (${san.length} coups)`);
-        r = await analyser(san, nom, palier.id);
+        r = await analyser(san, nom, idBlancs);
       } catch (e) {
-        console.log(`\n${nom} : ${String(e?.message ?? e).slice(0, 100)}`);
+        console.log(`
+${nom} : ${String(e?.message ?? e).slice(0, 100)}`);
         await ouvrirSession();
       }
     }
@@ -253,77 +305,77 @@ for (const palier of PALIERS) {
       console.log(`${nom} : rapport illisible`);
       continue;
     }
-    releves.push({ palier, ...r });
+    releves.push(
+      { id: idBlancs, camp: 'B', elo: r.eloBlancs, cp: r.cpBlancs, precision: r.precisionBlancs, adverse: idNoirs },
+      { id: idNoirs, camp: 'N', elo: r.eloNoirs, cp: r.cpNoirs, precision: r.precisionNoirs, adverse: idBlancs },
+    );
     process.stdout.write('.');
   }
 }
-console.log('\n');
+console.log('');
 
-// --- Tableau ---------------------------------------------------------------
-console.log('Chaque palier joue CONTRE LUI-MÊME : les deux camps doivent tomber');
-console.log('ensemble, et près du palier annoncé.\n');
-console.log('  palier            annoncé   Elo blancs   Elo noirs   cp B / cp N   préc. B / N');
-console.log('  ---------------------------------------------------------------------------------');
+const PAR_ID = new Map(PALIERS.map((p) => [p.id, p]));
 
-const parPalier = new Map();
+console.log('');
+console.log('Chaque ligne est UN camp d’UNE partie, comparé au palier qu’il a joué.');
+console.log('');
+console.log('  palier            annoncé   estimé   écart   cp/coup   précision   adversaire');
+console.log('  --------------------------------------------------------------------------------');
 for (const r of releves) {
-  const cle = r.palier.id;
-  if (!parPalier.has(cle)) parPalier.set(cle, { palier: r.palier, lignes: [] });
-  parPalier.get(cle).lignes.push(r);
+  const p = PAR_ID.get(r.id);
+  const ecart = p?.elo == null || r.elo == null ? '—' : (r.elo - p.elo >= 0 ? '+' : '') + (r.elo - p.elo);
   console.log(
-    `  ${r.palier.libelle.padEnd(16)} ${String(r.palier.elo ?? 'max').padStart(6)}   ` +
-      `${String(r.eloBlancs ?? '—').padStart(10)}   ${String(r.eloNoirs ?? '—').padStart(9)}   ` +
-      `${String(r.cpBlancs ?? '—').padStart(4)} / ${String(r.cpNoirs ?? '—').padEnd(4)}   ` +
-      `${(r.precisionBlancs?.toFixed(1) ?? '—').padStart(5)} / ${r.precisionNoirs?.toFixed(1) ?? '—'}`,
+    `  ${(p?.libelle ?? r.id).padEnd(16)} ${String(p?.elo ?? 'max').padStart(6)}   ` +
+      `${String(r.elo ?? '—').padStart(6)}   ${String(ecart).padStart(5)}   ` +
+      `${String(r.cp ?? '—').padStart(5)}     ${(r.precision?.toFixed(1) ?? '—').padStart(5)} %   ${r.adverse}`,
   );
 }
 
 console.log('');
+console.log('  Moyenne par palier :');
 const moyennes = [];
-for (const { palier, lignes } of parPalier.values()) {
-  const elos = lignes.flatMap((l) => [l.eloBlancs, l.eloNoirs]).filter((e) => e !== null);
-  if (elos.length === 0) continue;
-  const moy = elos.reduce((a, b) => a + b, 0) / elos.length;
-  const ecartB = lignes
-    .filter((l) => l.eloBlancs !== null && l.eloNoirs !== null)
-    .map((l) => l.eloBlancs - l.eloNoirs);
-  moyennes.push({ palier, moy, ecartB });
+for (const p of PALIERS) {
+  const siens = releves.filter((r) => r.id === p.id && r.elo !== null);
+  if (siens.length === 0) continue;
+  const moy = siens.reduce((a, r) => a + r.elo, 0) / siens.length;
+  const moyPrec = siens.reduce((a, r) => a + (r.precision ?? 0), 0) / siens.length;
+  const moyCp = siens.reduce((a, r) => a + (r.cp ?? 0), 0) / siens.length;
+  moyennes.push({ palier: p, moy, moyPrec, moyCp, n: siens.length });
+  const ecart = p.elo == null ? '—' : (moy - p.elo >= 0 ? '+' : '') + (moy - p.elo).toFixed(0);
   console.log(
-    `  ${palier.libelle.padEnd(16)} annoncé ${String(palier.elo ?? 'max').padStart(4)}   ` +
-      `estimé moyen ${moy.toFixed(0).padStart(4)}   ` +
-      `écart ${palier.elo === null ? '—' : (moy - palier.elo >= 0 ? '+' : '') + (moy - palier.elo).toFixed(0)}`,
+    `  ${p.libelle.padEnd(16)} annoncé ${String(p.elo ?? 'max').padStart(4)}   ` +
+      `estimé ${moy.toFixed(0).padStart(4)}   écart ${String(ecart).padStart(5)}   ` +
+      `${moyCp.toFixed(0).padStart(4)} cp   ${moyPrec.toFixed(1).padStart(5)} %   (${siens.length} relevés)`,
   );
 }
 
 console.log('');
 
 // --- Contrôles -------------------------------------------------------------
-
-// 1. Pas de biais systématique entre les deux camps : même palier des deux
-//    côtés, donc un écart constant signalerait une attribution croisée.
-const ecarts = moyennes.flatMap((m) => m.ecartB);
-const biais = ecarts.length ? ecarts.reduce((a, b) => a + b, 0) / ecarts.length : 0;
-verifier(
-  Math.abs(biais) < 150,
-  'Aucun biais systématique entre blancs et noirs',
-  `${biais >= 0 ? '+' : ''}${biais.toFixed(0)} Elo en moyenne sur ${ecarts.length} parties`,
+const TOLERANCE = 150;
+const horsTolerance = moyennes.filter(
+  (m) => m.palier.elo !== null && Math.abs(m.moy - m.palier.elo) > TOLERANCE,
 );
-
-// 2. L'estimation suit le palier : un palier à 800 ne doit pas sortir à 1800.
-const TOLERANCE = 400;
-const horsTolerance = moyennes.filter((m) => m.palier.elo !== null && Math.abs(m.moy - m.palier.elo) > TOLERANCE);
 verifier(
   horsTolerance.length === 0,
   `Chaque palier retombe à moins de ${TOLERANCE} Elo de sa valeur annoncée`,
   horsTolerance.length
-    ? horsTolerance
-        .map((m) => `${m.palier.libelle} ${m.palier.elo}→${m.moy.toFixed(0)}`)
-        .join(' | ')
-    : 'sur les sept paliers',
+    ? horsTolerance.map((m) => `${m.palier.libelle} ${m.palier.elo}→${m.moy.toFixed(0)}`).join(' | ')
+    : 'sur tous les paliers mesurés',
 );
 
-// 3. L'estimation est au moins ORDONNÉE : un palier supérieur doit estimer
-//    plus haut que son cadet.
+// La précision doit elle aussi rester plausible : un palier Débutant à 98 %
+// n'a pas de sens, c'était l'autre moitié du défaut signalé.
+const precisionAberrante = moyennes.filter(
+  (m) => m.palier.elo !== null && m.palier.elo <= 800 && m.moyPrec > 80,
+);
+verifier(
+  precisionAberrante.length === 0,
+  'Aucun palier faible n’affiche une précision de maître',
+  precisionAberrante.map((m) => `${m.palier.libelle} ${m.moyPrec.toFixed(1)} %`).join(' | ') ||
+    'les paliers faibles restent sous 80 %',
+);
+
 const ordonnes = moyennes.filter((m) => m.palier.elo !== null).sort((a, b) => a.palier.elo - b.palier.elo);
 const desordres = [];
 for (let i = 1; i < ordonnes.length; i++) {
@@ -331,6 +383,7 @@ for (let i = 1; i < ordonnes.length; i++) {
     desordres.push(`${ordonnes[i - 1].palier.libelle} → ${ordonnes[i].palier.libelle}`);
 }
 verifier(desordres.length === 0, 'L’estimation croît avec le palier', desordres.join(' | '));
+
 
 await fermerSession();
 console.log('\n' + (echecs === 0 ? 'Étalonnage : conforme.' : `${echecs} contrôle(s) en échec.`));

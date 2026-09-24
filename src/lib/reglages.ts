@@ -38,6 +38,14 @@ export interface Reglages {
   coordonnees: boolean;
   /** Jouer un son sur les coups. */
   sons: boolean;
+  /**
+   * Le professeur parle-t-il à voix haute ?
+   *
+   * Actif par défaut, mais le navigateur ne laissera la synthèse s'exprimer
+   * qu'après la première interaction de l'utilisateur avec la page : c'est
+   * une contrainte des navigateurs, pas un délai ajouté ici.
+   */
+  voix: boolean;
   /** Animation des pièces (désactivable sur appareil lent). */
   animations: boolean;
   /** Professeur choisi pour le jeu assisté. */
@@ -64,6 +72,7 @@ export const REGLAGES_PAR_DEFAUT: Reglages = {
   cleApi: '',
   coordonnees: true,
   sons: false,
+  voix: true,
   animations: true,
   professeur: PROFESSEUR_PAR_DEFAUT,
   niveauEleve: 'intermediaire',

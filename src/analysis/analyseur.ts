@@ -17,6 +17,7 @@ import {
   momentsCharnieres,
   pdgBlancs,
   eloEstime,
+  PLAFOND_PERTE,
   precisionCoup,
   precisionPartie,
   SEUILS_PAR_DEFAUT,
@@ -91,6 +92,15 @@ export interface RapportAnalyse {
   /** Elo estimé auquel chaque camp a joué cette partie. */
   eloBlancs: number | null;
   eloNoirs: number | null;
+  /**
+   * Nombre de coups DISPUTÉS retenus par camp.
+   *
+   * C'est lui qui décide si le rapport annonce une valeur unique, un
+   * intervalle, ou rien du tout. Le conserver évite de devoir refaire
+   * l'analyse quand la présentation change.
+   */
+  coupsRetenusBlancs: number;
+  coupsRetenusNoirs: number;
   /** Nombre de coups par classement, pour chaque camp. */
   bilanBlancs: Record<Classement, number>;
   bilanNoirs: Record<Classement, number>;
@@ -146,24 +156,13 @@ function cederLeThread(): Promise<void> {
  * conserver les coups déjà reçus.
  */
 /**
- * Plafond de perte par coup, en centipions.
+ * Borne appliquée à l'évaluation avant d'en tirer une perte.
  *
- * Fixé au point où la précision d'un coup SATURE. Depuis une position
- * égale, la précision d'un coup vaut, selon ce qu'il lâche :
- *
- *     −100 cp → 66 %      −500 cp → 18 %
- *     −200 cp → 45 %      −600 cp → 15 %
- *     −300 cp → 31 %      −1000 cp → 10 %
- *     −400 cp → 23 %      −3000 cp → 8,5 % (asymptote)
- *
- * Passé 600 centipions, la courbe a parcouru l'essentiel de son domaine et
- * ne bouge presque plus, tandis que la perte brute, elle, continue de
- * croître sans limite : un seul mat concédé, compté 10 000, portait à lui
- * seul la moyenne d'une partie honnête au-dessus de celle d'une partie
- * médiocre sans que la précision bronche. Les deux mesures doivent saturer
- * ensemble, sinon leur classement diverge.
+ * Dix pions : au-delà, la partie est gagnée et l'écart exact n'apprend plus
+ * rien sur la qualité du jeu. Borner plutôt qu'exclure garde tous les coups
+ * dans l'échantillon — voir `perteBornee`.
  */
-const PLAFOND_PERTE = 600;
+const PLAFOND_EVALUATION = 1000;
 
 export async function analyserPartie(
   moteur: Moteur,
@@ -211,6 +210,8 @@ export async function analyserPartie(
       perteMoyenneNoirs: null,
       eloBlancs: null,
       eloNoirs: null,
+      coupsRetenusBlancs: 0,
+      coupsRetenusNoirs: 0,
       bilanBlancs: bilanVide(),
       bilanNoirs: bilanVide(),
       momentsCles: [],
@@ -311,34 +312,53 @@ export async function analyserPartie(
 
     // `avant` et `apres` sont déjà au point de vue du joueur qui vient de jouer :
     // la chute de probabilité de gain se lit directement.
-    const precision = precisionCoup(pdgBlancs(avant), pdgBlancs(apres));
+    const cpAvantJoueur = evaluationEnCp(avant);
+    const cpApresJoueur = evaluationEnCp(apres);
 
     /**
-     * Le coup compte-t-il dans les notes ?
+     * Coups RETENUS pour les moyennes : ceux joués en position encore disputée.
      *
-     * Les positions déjà décidées sont écartées — des DEUX mesures, et c'est
-     * le correctif. La précision se fonde sur la chute de probabilité de
-     * gain, laquelle SATURE aux extrêmes : dans une position perdue à
-     * −2000, lâcher 500 centipions de plus ne déplace presque pas la
-     * probabilité, donc ne coûte presque rien en précision. La perte
-     * moyenne, elle, comptait ces coups en plein. Les deux mesures ne
-     * portaient donc pas sur le même ensemble de coups, et une partie à
-     * 1060 cp perdus par coup pouvait ressortir mieux notée qu'une partie à
-     * 620. Mesuré sur le banc de vingt parties.
+     * Trois méthodes ont été mesurées, sur de vraies parties entre paliers de
+     * forces différentes. Aucune n'est parfaite, et il faut dire laquelle on
+     * retient et pourquoi.
+     *
+     *  1. Tout compter, sans borne. La perte explose dès qu'un mat entre en
+     *     jeu et n'a plus de rapport avec la force du joueur.
+     *
+     *  2. Tout compter, sur des évaluations bornées à ±10 pions. Dans la
+     *     phase décidée, les deux camps enregistrent une perte nulle coup
+     *     après coup. La moyenne se dilue d'autant plus que la partie a été
+     *     tranchée tôt — donc d'autant plus que l'adversaire était faible.
+     *     Mesuré : un palier 400 et un palier 1600 ressortaient tous deux
+     *     autour de 68 cp. Les paliers ne se séparaient plus du tout.
+     *
+     *  3. Ne compter que les coups joués en position disputée, celle que
+     *     retiennent aussi Lichess et Chess.com. Les paliers se séparent
+     *     nettement en partie équilibrée — 176 cp pour le plus faible, 4 cp
+     *     pour le plus fort. La limite est ailleurs : contre un adversaire
+     *     très supérieur, la fenêtre disputée est courte, et l'estimation
+     *     porte sur trop peu de coups pour valoir quelque chose.
+     *
+     * On retient la troisième, et on refuse de se prononcer quand la fenêtre
+     * est trop courte (voir `COUPS_MIN_ELO`). Mieux vaut ne rien annoncer
+     * qu'annoncer un chiffre que la partie ne porte pas.
+     *
+     * Point essentiel : le filtre s'applique aux DEUX mesures et porte sur la
+     * position, non sur le joueur. Les deux camps sont donc notés sur
+     * exactement le même ensemble de coups, ce qui interdit qu'ils se
+     * contredisent.
      */
-    const pertinent = Math.abs(cpAvantBlancs) < 1000;
+    const pertinent = Math.abs(cpAvantBlancs) < PLAFOND_EVALUATION;
 
-    /**
-     * Perte retenue pour la moyenne, PLAFONNÉE.
-     *
-     * Deuxième moitié du correctif. La précision d'un coup est bornée par
-     * zéro : au-delà d'environ dix pions lâchés d'un coup, elle ne peut
-     * plus descendre. La perte moyenne, elle, montait sans limite — un
-     * seul mat concédé (compté 10 000) suffisait à porter la moyenne d'une
-     * partie honnête au-dessus de celle d'une partie médiocre, sans que la
-     * précision bouge. Les deux mesures doivent saturer ensemble.
-     */
-    const perteRetenue = Math.min(perteCp, PLAFOND_PERTE);
+    const borne = (cp: number) => Math.max(-PLAFOND_EVALUATION, Math.min(PLAFOND_EVALUATION, cp));
+    const perteBornee = Math.min(
+      PLAFOND_PERTE,
+      Math.max(0, borne(cpAvantJoueur) - borne(cpApresJoueur)),
+    );
+
+    // La précision découle de la MÊME grandeur que la perte moyenne : c'est
+    // ce qui garantit qu'elles ne peuvent plus se contredire.
+    const precision = precisionCoup(perteBornee);
 
     const varianteUci = pvMeilleure.slice(0, 5);
     const analyse: CoupAnalyse = {
@@ -380,14 +400,14 @@ export async function analyserPartie(
     if (couleur === 'w') {
       if (pertinent) {
         precisionsBlancs.push(precision);
-        pertesBlancs.push(perteRetenue);
+        pertesBlancs.push(perteBornee);
         pdgSuiteBlancs.push(pdgBlancs(avant));
       }
       bilanBlancs[classement] += 1;
     } else {
       if (pertinent) {
         precisionsNoirs.push(precision);
-        pertesNoirs.push(perteRetenue);
+        pertesNoirs.push(perteBornee);
         pdgSuiteNoirs.push(pdgBlancs(avant));
       }
       bilanNoirs[classement] += 1;
@@ -412,6 +432,8 @@ export async function analyserPartie(
     perteMoyenneNoirs: moyenne(pertesNoirs),
     eloBlancs: eloDe(pertesBlancs),
     eloNoirs: eloDe(pertesNoirs),
+    coupsRetenusBlancs: pertesBlancs.length,
+    coupsRetenusNoirs: pertesNoirs.length,
     bilanBlancs,
     bilanNoirs,
     momentsCles: momentsCharnieres(coups, 3),

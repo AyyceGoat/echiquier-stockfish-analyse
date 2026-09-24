@@ -290,6 +290,43 @@ La clé n'est jamais incluse dans le bundle client.
 - Table de hachage réglée dynamiquement : 16 Mo sur iOS (au-delà, Safari fait
   recharger l'onglet), 32 Mo sur les autres mobiles, 128 Mo sur ordinateur.
 
+### Précision et Elo estimé : nos chiffres ne sont pas ceux de Lichess
+
+**Ne cherchez pas à comparer ces pourcentages avec ceux de Lichess ou de
+Chess.com : ils ne mesurent pas la même chose, et c'est délibéré.**
+
+Ces deux sites notent chaque coup d'après la chute de **probabilité de gain**
+qu'il provoque, et écartent des moyennes les positions déjà décidées. Cette
+méthode a un angle mort mesuré ici sur une partie de contrôle : passé environ
+onze pions d'avance, la probabilité de gain est collée à ses bornes et ne peut
+plus bouger. **Tous** les coups joués au-delà de ce seuil ressortaient à
+exactement 100 %, pour les deux camps — y compris un coup lâchant 486
+centipions. Sur une partie déséquilibrée, la moitié des coups était donc notée
+parfaite pour tout le monde, et la note finale ne dépendait plus que de la
+poignée de coups encore disputés. Un palier « Débutant » pouvait ainsi
+afficher 98 % de précision et 2190 Elo estimé.
+
+Écarter les positions décidées règle la précision mais déplace le problème sur
+la perte moyenne : contre un adversaire beaucoup plus faible, la partie sort
+de la zone disputée en une dizaine de coups, il ne reste dans l'échantillon
+que l'ouverture, et le vainqueur ressort largement surévalué.
+
+Ici, les deux mesures sont donc construites sur **la même grandeur** : la
+perte en centipions, calculée sur des évaluations bornées à ±10 pions et
+plafonnée à 10 pions par coup. Conséquences :
+
+- la précision décroît quand la perte augmente, **sans aucune exception** ;
+- tous les coups comptent, l'échantillon ne dépend plus de la force de
+  l'adversaire ;
+- les deux joueurs sont notés sur le même ensemble de coups ;
+- un coup joué dans une position déjà gagnée ne rapporte ni ne coûte rien,
+  des deux côtés.
+
+L'Elo estimé se déduit de cette perte moyenne, par une courbe calée sur des
+parties réelles entre nos propres paliers (`npm run test:elo`). Il ne s'agit
+pas d'un classement : c'est la force à laquelle un camp a joué **cette**
+partie-là, à environ 150 Elo près.
+
 ### Hors ligne et multi-thread : pourquoi un repli
 
 Le build multi-thread démarre ses threads secondaires avec une URL de script

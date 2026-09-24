@@ -43,10 +43,16 @@ import { NiveauActif } from '../ui/ChoixNiveau.tsx';
 import { ChoixProfesseur } from '../ui/ChoixProfesseur.tsx';
 import { PortraitProfesseur } from '../ui/PortraitProfesseur.tsx';
 import {
+  commentaireFinPartie,
   commentaireLocal,
+  issueDe,
   palierDuProfesseur,
   professeurParId,
+  salutationDe,
+  type CoupMarquant,
 } from '../lib/professeurs.ts';
+import { ouvrirMemoire, retenirMemoire } from '../lib/memoirePhrases.ts';
+import { debloquerVoix, dire, taire } from '../lib/voix.ts';
 import {
   AffichageEval,
   Alerte,
@@ -102,8 +108,24 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
   const [configuree, setConfiguree] = useState(false);
   const [monCamp, setMonCamp] = useState<'w' | 'b'>('w');
   const [verdict, setVerdict] = useState<Verdict | null>(null);
-  /** Commentaires déjà prononcés dans cette partie, pour éviter les redites. */
-  const dejaDites = useRef<string[]>([]);
+  /**
+   * Mémoire des tournures, PERSISTANTE d'une partie à l'autre.
+   *
+   * L'historique ne vivait qu'à l'intérieur d'une partie : trois parties de
+   * suite avec le même professeur et l'accueil, les commentaires et la
+   * conclusion revenaient à l'identique.
+   */
+  const memoire = useRef(ouvrirMemoire(reglages.professeur));
+
+  /**
+   * Journal des coups de l'élève, tenu au fil de la partie.
+   *
+   * Il sert au bilan final : le coup qui a fait basculer la partie et le
+   * meilleur moment. Les relever pendant la partie est plus juste qu'une
+   * analyse d'après-coup, et instantané.
+   */
+  const journal = useRef<CoupMarquant[]>([]);
+  const [finDite, setFinDite] = useState(false);
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [promotionEnAttente, setPromotion] = useState<{ depuis: string; vers: string } | null>(null);
   const [verdictEnCours, setVerdictEnCours] = useState(false);
@@ -351,12 +373,20 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
    * substituer plus tard sans toucher à cet écran.
    */
   useEffect(() => {
+    // Une partie terminée a le dernier mot.
+    //
+    // Défaut corrigé : le verdict du coup final est calculé de façon
+    // asynchrone et arrivait APRÈS le discours de fin, qu'il écrasait. Le
+    // professeur semblait donc commenter un coup alors que la partie était
+    // finie — c'est précisément ce qui était signalé.
+    if (fin) return;
     if (!verdict) {
       // Pas de verdict : le professeur salue. C'est ce qui le rend présent
       // dès le lancement, avant le premier coup — auparavant il n'existait
       // qu'à l'intérieur de la carte de verdict, donc nulle part tant qu'on
       // n'avait pas joué.
-      setCommentaire(prof.salutation);
+      setCommentaire(salutationDe(prof, memoire.current));
+      retenirMemoire(prof.id, memoire.current);
       return;
     }
     let vivant = true;
@@ -371,20 +401,77 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
         cpApres: verdict.cpApres,
         explication: verdict.explication,
         eleve: reglages.niveauEleve,
-        dejaDites: dejaDites.current,
+        memoire: memoire.current,
       })
       .then((texte) => {
         if (!vivant) return;
-        // On retient le commentaire pour que les tournures qu'il contient ne
-        // ressortent pas au coup suivant. Les vingt derniers suffisent : au
-        // delà, une reprise ne s'entend plus.
-        dejaDites.current = [...dejaDites.current, texte].slice(-20);
+        // Les tournures ne sont retenues QU'UNE FOIS le commentaire affiché :
+        // un commentaire préparé puis abandonné — l'élève reprend son coup —
+        // ne doit pas condamner ses tournures.
+        retenirMemoire(prof.id, memoire.current);
         setCommentaire(texte);
       });
     return () => {
       vivant = false;
     };
-  }, [verdict, prof, reglages.niveauEleve]);
+  }, [verdict, prof, reglages.niveauEleve, fin]);
+
+  // Journal : un relevé par coup de l'élève, pour le bilan final.
+  useEffect(() => {
+    if (!verdict) return;
+    journal.current = [
+      ...journal.current,
+      {
+        san: uciVersSan(verdict.fenAvant, verdict.coupJoue) ?? verdict.coupJoue,
+        ply: partie.coups.length - 1,
+        perteCp: verdict.perteCp,
+        classement: verdict.classement,
+        motif: verdict.explication.motif,
+      },
+    ];
+    // `partie.coups.length` est volontairement hors dépendances : c'est le
+    // verdict qui déclenche le relevé, et le relire ici suffit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verdict]);
+
+  /**
+   * Le mot de la fin.
+   *
+   * Défaut corrigé : une fois le mat tombé, le professeur continuait à
+   * commenter le dernier coup comme si la partie se poursuivait. Il dit
+   * maintenant l'issue, le coup qui a fait basculer la partie, et ce qu'il
+   * faut en retenir.
+   */
+  useEffect(() => {
+    if (!fin || finDite || !configuree) return;
+    setFinDite(true);
+    const pire = journal.current.reduce<CoupMarquant | null>(
+      (p, c) => (p === null || c.perteCp > p.perteCp ? c : p),
+      null,
+    );
+    const beau = journal.current.reduce<CoupMarquant | null>(
+      (b, c) =>
+        c.classement === 'excellent' || c.classement === 'unique'
+          ? b === null || c.perteCp < b.perteCp
+            ? c
+            : b
+          : b,
+      null,
+    );
+    setVerdict(null);
+    setCommentaire(
+      commentaireFinPartie(prof, {
+        issue: issueDe(fin.resultat, monCamp, fin.raison),
+        raison: fin.raison,
+        nbCoups: partie.coups.length,
+        pireCoup: pire,
+        beauCoup: beau,
+        eleve: reglages.niveauEleve,
+        memoire: memoire.current,
+      }),
+    );
+    retenirMemoire(prof.id, memoire.current);
+  }, [fin, finDite, configuree, prof, monCamp, partie.coups.length, reglages.niveauEleve]);
 
   /**
    * Frappe du commentaire.
@@ -414,6 +501,36 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
 
   const parleEnCours = commentaire.length > 0 && commentaireAffiche.length < commentaire.length;
 
+  /**
+   * Voix du professeur, lancée en même temps que la frappe.
+   *
+   * On ne découpe pas la parole en morceaux pour la caler sur les
+   * caractères : la synthèse gère elle-même son rythme, et la frappe est
+   * réglée pour durer à peu près autant. Les deux commencent ensemble, ce
+   * qui suffit à ce que la bouche, le texte et le son aillent de pair.
+   *
+   * La coupure est immédiate quand le commentaire change : deux répliques
+   * qui se chevauchent seraient incompréhensibles.
+   */
+  useEffect(() => {
+    if (!reglages.voix || commentaire.length === 0) return;
+    dire({ idProfesseur: prof.id, texte: commentaire });
+    return () => taire();
+  }, [commentaire, reglages.voix, prof.id]);
+
+  // La synthèse vocale reste bloquée tant que l'utilisateur n'a rien touché :
+  // on saisit la première interaction de l'écran pour lever le verrou.
+  useEffect(() => {
+    if (!reglages.voix) return;
+    const lever = () => debloquerVoix();
+    window.addEventListener('pointerdown', lever, { once: true });
+    window.addEventListener('keydown', lever, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', lever);
+      window.removeEventListener('keydown', lever);
+    };
+  }, [reglages.voix]);
+
   const reprendreLeCoup = useCallback(() => {
     // Si le moteur a malgré tout déjà répondu, on remonte jusqu'à rendre
     // la main au joueur : reprendre doit toujours effacer le coup fautif.
@@ -434,7 +551,8 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
       // L'interdiction de répétition vaut À L'INTÉRIEUR d'une partie. Garder
       // l'historique d'une partie sur l'autre épuiserait les tournures et
       // forcerait le professeur à se répéter dès la deuxième.
-      dejaDites.current = [];
+      journal.current = [];
+      setFinDite(false);
       setEnregistree(false);
       setErreur(null);
     },

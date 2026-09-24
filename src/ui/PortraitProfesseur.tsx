@@ -141,6 +141,34 @@ export function PortraitProfesseur({
     };
   }, [prof.id]);
 
+  /* --- Pastilles prêtes ? ----------------------------------------------
+     Le service worker les pré-cache désormais, mais à la toute première
+     visite elles arrivent encore du réseau. Basculer l'opacité sur une image
+     non décodée n'affiche rien : la bouche restait immobile pendant les
+     premières répliques, puis fonctionnait une fois le cache rempli. On les
+     décode donc à l'avance et on n'anime qu'ensuite. */
+  const [bouchesPretes, setBouchesPretes] = useState(false);
+  useEffect(() => {
+    if (prof.bouches.length === 0) return;
+    let vivant = true;
+    setBouchesPretes(false);
+    void Promise.all(
+      prof.bouches.map(async (src) => {
+        const img = new Image();
+        img.src = src;
+        // `decode` échoue sur certains navigateurs pour une image déjà en
+        // cache : le repli sur `complete` évite de bloquer l'animation.
+        await img.decode().catch(() => undefined);
+        return img.complete;
+      }),
+    ).then(() => {
+      if (vivant) setBouchesPretes(true);
+    });
+    return () => {
+      vivant = false;
+    };
+  }, [prof.bouches]);
+
   /* --- Bouche, si et seulement si des pastilles existent ---------------
      L'index 0 est la bouche fermée, c'est-à-dire AUCUNE pastille : le
      portrait d'origine suffit. Les pastilles suivantes s'y superposent.
@@ -150,13 +178,17 @@ export function PortraitProfesseur({
      interdisant de répéter le précédent, ce qui produit des ouvertures de
      durées inégales, comme une parole. */
   useEffect(() => {
-    if (prof.bouches.length === 0) return;
+    if (prof.bouches.length === 0 || !bouchesPretes) return;
     if (!parle) {
       setImageBouche(0);
       return;
     }
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-    let precedent = 0;
+    // Premier état posé TOUT DE SUITE : attendre le premier tour d'horloge
+    // laissait la bouche fermée pendant les 115 premières millisecondes de
+    // chaque réplique, ce qui se voit sur les répliques courtes.
+    let precedent = 1;
+    setImageBouche(1);
     const t = window.setInterval(() => {
       let suivant = precedent;
       while (suivant === precedent) suivant = Math.floor(Math.random() * (prof.bouches.length + 1));
@@ -167,7 +199,7 @@ export function PortraitProfesseur({
       clearInterval(t);
       setImageBouche(0);
     };
-  }, [parle, prof.bouches.length]);
+  }, [parle, prof.bouches.length, bouchesPretes]);
 
   const boiteDeLaBouche = useMemo(
     () => (reperes ? boiteBouche(reperes) : null),

@@ -10,6 +10,8 @@
 import { useEffect, useState } from 'react';
 import { useReglages } from '../contexte.tsx';
 import { SEUILS_PAR_DEFAUT } from '../lib/classification.ts';
+import { oublierToutesLesPhrases } from '../lib/memoirePhrases.ts';
+import { taire } from '../lib/voix.ts';
 import { moteursReconnaissance } from '../recognition/index.ts';
 import { ChoixNiveau } from '../ui/ChoixNiveau.tsx';
 import {
@@ -25,6 +27,7 @@ import {
 } from '../ui/composants.tsx';
 
 export function Reglages({ naviguer }: { naviguer: (v: string) => void }) {
+  const [phrasesOubliees, setPhrasesOubliees] = useState(false);
   const { reglages, majReglages, reinitialiserReglages, stockageDisponible } = useReglages();
   const [cleVisible, setCleVisible] = useState(false);
   const [cleServeur, setCleServeur] = useState<boolean | null>(null);
@@ -85,6 +88,35 @@ export function Reglages({ naviguer }: { naviguer: (v: string) => void }) {
             actif={reglages.animations}
             onChange={(v) => majReglages({ animations: v })}
           />
+          <Interrupteur
+            libelle="Le professeur parle à voix haute"
+            description="La voix vient de votre appareil : gratuite et hors ligne, mais son naturel varie beaucoup d’un système à l’autre."
+            actif={reglages.voix}
+            onChange={(v) => {
+              majReglages({ voix: v });
+              // Couper le réglage doit faire taire immédiatement ce qui est
+              // en cours, pas seulement la réplique suivante.
+              if (!v) taire();
+            }}
+          />
+          <div className="flex flex-wrap gap-2">
+            <Bouton variante="discret" onClick={() => naviguer('/voix')}>
+              Écouter les quatre voix
+            </Bouton>
+            <Bouton
+              variante="discret"
+              onClick={() => {
+                oublierToutesLesPhrases();
+                setPhrasesOubliees(true);
+              }}
+            >
+              {phrasesOubliees ? 'Mémoire effacée' : 'Effacer la mémoire des professeurs'}
+            </Bouton>
+          </div>
+          <p className="text-xs text-[var(--color-texte-doux)]">
+            Les professeurs retiennent les tournures déjà employées, d’une partie à l’autre, pour
+            ne pas se répéter. Effacer cette mémoire leur rend toutes leurs formules.
+          </p>
         </div>
       </Carte>
 

@@ -19,14 +19,31 @@ export function deposerPosition(fen: string): void {
 }
 
 /** Récupère la position déposée et la consomme. */
+/**
+ * Position déjà consommée pendant cette visite.
+ *
+ * Défaut corrigé : la lecture effaçait la clé, et elle était appelée depuis
+ * l'initialiseur d'un `useState`. React invoque cet initialiseur deux fois en
+ * mode strict : le second appel ne trouvait plus rien, et selon l'instance
+ * conservée la position partagée était perdue. On mémorise donc la valeur
+ * pour la durée de la page, ce qui rend la fonction idempotente.
+ */
+let dejaRecuperee: string | null | undefined;
+
 export function recupererPosition(): string | null {
+  if (dejaRecuperee !== undefined) return dejaRecuperee;
   try {
     const fen = sessionStorage.getItem(CLE);
-    if (!fen) return null;
+    if (!fen) {
+      dejaRecuperee = null;
+      return null;
+    }
     sessionStorage.removeItem(CLE);
     // On revalide : le contenu de `sessionStorage` peut être modifié à la main.
-    return validateFenLegality(fen).valide ? fen : null;
+    dejaRecuperee = validateFenLegality(fen).valide ? fen : null;
+    return dejaRecuperee;
   } catch {
+    dejaRecuperee = null;
     return null;
   }
 }

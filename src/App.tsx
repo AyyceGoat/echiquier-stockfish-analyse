@@ -34,6 +34,7 @@ const Apprendre = lazy(() =>
   import('./pages/Apprendre.tsx').then((m) => ({ default: m.Apprendre })),
 );
 const Reglages = lazy(() => import('./pages/Reglages.tsx').then((m) => ({ default: m.Reglages })));
+const Voix = lazy(() => import('./pages/Voix.tsx').then((m) => ({ default: m.Voix })));
 const Diagnostic = lazy(() =>
   import('./pages/Diagnostic.tsx').then((m) => ({ default: m.Diagnostic })),
 );
@@ -133,6 +134,8 @@ function Coque() {
         return <Apprendre naviguer={naviguer} />;
       case 'reglages':
         return <Reglages naviguer={naviguer} />;
+      case 'voix':
+        return <Voix naviguer={naviguer} />;
       case 'diagnostic':
         return <Diagnostic naviguer={naviguer} />;
       case 'rapport':

@@ -92,6 +92,24 @@ function erreur(message, conseil, statut = 400) {
   return reponseJson({ erreur: message, conseil }, statut);
 }
 
+/**
+ * L'origine de la requête est-elle celle du site ?
+ *
+ * On compare à l'hôte servi par la requête elle-même, ce qui couvre du même
+ * coup le domaine de production, les préversions et les branches, sans liste
+ * à tenir à jour. Une requête sans origine — appel serveur à serveur, outil
+ * en ligne de commande — est refusée : le navigateur, lui, envoie toujours
+ * cet en-tête sur une requête POST cross-origin ou same-origin.
+ */
+function origineAutorisee(origine, req) {
+  if (!origine) return false;
+  try {
+    return new URL(origine).host === new URL(req.url).host;
+  } catch {
+    return false;
+  }
+}
+
 export default async function handler(req) {
   if (req.method === 'GET') {
     const url = new URL(req.url);
@@ -112,7 +130,28 @@ export default async function handler(req) {
     return erreur('Méthode non prise en charge.', undefined, 405);
   }
 
-  const cle = process.env.ANTHROPIC_API_KEY || req.headers.get('x-cle-api');
+  // Origine vérifiée AVANT toute dépense.
+  //
+  // Quand une clé est configurée côté hébergeur, ce point d'entrée dépense
+  // les crédits du propriétaire du site. Sans contrôle, n'importe qui sur
+  // Internet peut l'appeler : c'était un relais ouvert. On n'accepte donc
+  // que les requêtes émises depuis le site lui-même. Ce n'est pas une
+  // authentification — un en-tête se falsifie — mais cela ferme l'usage
+  // depuis un navigateur tiers, qui est le cas réel.
+  //
+  // Une requête portant la clé de l'utilisateur reste acceptée sans
+  // condition : elle ne coûte rien au site.
+  const origine = req.headers.get('origin');
+  const cleUtilisateur = req.headers.get('x-cle-api');
+  if (!cleUtilisateur && process.env.ANTHROPIC_API_KEY && !origineAutorisee(origine, req)) {
+    return erreur(
+      'Origine non autorisée.',
+      "Cette fonction ne répond qu'aux requêtes venant de l'application.",
+      403,
+    );
+  }
+
+  const cle = process.env.ANTHROPIC_API_KEY || cleUtilisateur;
   if (!cle) {
     return erreur(
       "Aucune clé d'API n'est configurée.",
