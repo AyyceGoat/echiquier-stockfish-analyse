@@ -36,7 +36,13 @@ export default defineConfig({
       },
       workbox: {
         // On ne precache jamais le moteur : trop lourd pour une premiere visite mobile.
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // Les pastilles de bouche sont PRE-cachees, pas seulement mises en
+        // cache a l'usage : elles servent des la premiere replique du
+        // professeur, quelques centaines de millisecondes apres l'ouverture
+        // de l'ecran. Fetchees a ce moment-la elles arrivaient trop tard, et
+        // les premieres prises de parole restaient muettes. Huit fichiers,
+        // 130 Ko en tout : le cout est negligeable.
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2}', '**/profs/*-bouche-*.webp'],
         globIgnores: ['**/engine/**', '**/node_modules/**'],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         navigateFallback: '/index.html',
@@ -46,11 +52,16 @@ export default defineConfig({
         skipWaiting: false,
         runtimeCaching: [
           {
-            // Portraits des professeurs. Mis en cache à l'usage plutôt que
-            // pré-cachés : cinq largeurs par professeur pèsent un demi-méga,
-            // dont l'appareil ne télécharge en pratique qu'une seule. Le nom
-            // de fichier porte la largeur, donc l'URL est immuable.
-            urlPattern: /\/profs\/[a-z-]+-\d+\.webp$/,
+            // Portraits des professeurs, toutes largeurs et pastilles de
+            // bouche comprises. Mis en cache a l'usage : cinq largeurs par
+            // professeur pesent un demi-mega, dont l'appareil ne telecharge
+            // en pratique qu'une seule.
+            //
+            // Le motif couvrait `nom-512.webp` mais pas
+            // `nom-bouche-ouverte.webp` : les pastilles n'etaient donc mises
+            // en cache nulle part et repartaient sur le reseau a chaque
+            // visite.
+            urlPattern: /\/profs\/.*\.webp$/,
             handler: 'CacheFirst',
             options: {
               cacheName: 'portraits-professeurs-v1',

@@ -31,7 +31,10 @@
     "test:bouches": "node --experimental-strip-types scripts/controler-bouches.mjs",
     "apercu:bouches": "node --experimental-strip-types scripts/apercu-bouches.mjs",
     "test:mobile": "node scripts/apercu-mobile.mjs",
-    "test:commentaires": "node scripts/test-commentaires.mjs"
+    "test:commentaires": "node scripts/test-commentaires.mjs",
+    "test:elo": "node scripts/test-elo-paliers.mjs",
+    "test:fin": "node scripts/test-fin-et-variete.mjs",
+    "test:erreurs": "node scripts/test-mes-erreurs.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",

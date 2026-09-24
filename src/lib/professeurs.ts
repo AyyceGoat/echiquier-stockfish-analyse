@@ -24,6 +24,16 @@
  */
 
 import type { Classement } from './classification.ts';
+import {
+  FIN_BEAU_COUP,
+  FIN_CONSEIL,
+  FIN_OUVERTURES,
+  FIN_PIVOT,
+  LECON_MOTIF,
+  SALUTATIONS,
+  type IssuePartie,
+} from './repertoireProfesseurs.ts';
+import type { MemoirePhrases } from './memoirePhrases.ts';
 import type { Explication, MotifExplication } from './explications.ts';
 
 /* ==========================================================================
@@ -70,7 +80,12 @@ export interface FicheProfesseur {
   /** Bornes de l'échelle moteur dans lesquelles il joue. */
   palierMin: string;
   palierMax: string;
-  /** Ce qu'il dit en s'asseyant, avant le premier coup. */
+  /**
+   * Ce qu'il dit en s'asseyant, avant le premier coup.
+   *
+   * Conservé pour compatibilité, mais c'est `salutationDe` qu'il faut
+   * appeler : une salutation unique se reconnaissait dès la deuxième partie.
+   */
   salutation: string;
   /**
    * États de bouche disponibles, dans l'ordre d'ouverture croissante.
@@ -218,7 +233,7 @@ export interface ContexteCommentaire {
    * Sans cet historique, la même formulation revenait dix fois de suite.
    * Le tirage les écarte tant qu'il reste des variantes disponibles.
    */
-  dejaDites?: string[];
+  memoire?: MemoirePhrases;
 }
 
 export interface MoteurCommentaire {
@@ -686,14 +701,30 @@ function piocher<T>(liste: T[], graine: string): T {
  * Si toutes les variantes ont servi, on repart de la liste complète plutôt
  * que de ne rien dire — mieux vaut une répétition tardive qu'un blanc.
  */
-function piocherNeuf(liste: string[], graine: string, dejaDites: string[] = []): string {
+function piocherNeuf(liste: string[], graine: string, memoire?: MemoirePhrases): string {
   if (liste.length === 0) return '';
-  if (dejaDites.length === 0) return piocher(liste, graine);
-  // L'historique tenu par l'écran contient les commentaires COMPLETS déjà
-  // prononcés, pas les tournures isolées : on teste donc l'inclusion.
-  const restantes = liste.filter((t) => !dejaDites.some((d) => d.includes(t)));
-  return piocher(restantes.length > 0 ? restantes : liste, graine);
+  const deja = memoire ? new Set([...memoire.dites, ...memoire.nouvelles]) : new Set<string>();
+  const restantes = liste.filter((t) => !deja.has(t));
+  const choisie = piocher(restantes.length > 0 ? restantes : liste, graine);
+  // On note la tournure retenue : c'est elle, et non le commentaire
+  // assemblé, qui constitue l'unité de répétition.
+  if (memoire && choisie) memoire.nouvelles.push(choisie);
+  return choisie;
 }
+
+/**
+ * Salutation du professeur, sans répéter celle des parties précédentes.
+ *
+ * La graine dépend de l'horloge : deux parties lancées coup sur coup ne
+ * doivent pas ouvrir de la même façon, et la mémoire écarte de toute façon
+ * ce qui a déjà servi.
+ */
+export function salutationDe(prof: FicheProfesseur, memoire?: MemoirePhrases): string {
+  const registre = SALUTATIONS[prof.id];
+  if (!registre || registre.length === 0) return prof.salutation;
+  return piocherNeuf(registre, `${prof.id}|${Date.now()}`, memoire);
+}
+
 
 /**
  * Commentaire local : aucune requête, aucune clé, fonctionne hors ligne.
@@ -720,7 +751,7 @@ export const commentaireLocal: MoteurCommentaire = {
     const graine = `${prof.id}|${ctx.coupSan}|${ctx.classement}|${ctx.eleve}`;
 
     const morceaux: string[] = [];
-    const deja = ctx.dejaDites ?? [];
+    const deja = ctx.memoire;
     const situation = situationDe(ctx.cpApres);
 
     // 1. Ouverture, choisie selon l'ÉTIQUETTE et non selon un simple
@@ -826,4 +857,97 @@ export function moteursCommentaire(): MoteurCommentaire[] {
 
 export function moteurCommentaire(id?: string): MoteurCommentaire {
   return moteursCommentaire().find((m) => m.id === id) ?? commentaireLocal;
+}
+
+/* ==========================================================================
+   FIN DE PARTIE
+   ========================================================================== */
+
+/** Un coup saillant de la partie, retenu par l'assistance au fil des coups. */
+export interface CoupMarquant {
+  san: string;
+  ply: number;
+  perteCp: number;
+  classement: Classement;
+  motif?: MotifExplication;
+}
+
+export interface ContexteFin {
+  /** Issue, du point de vue de l'ÉLÈVE. */
+  issue: IssuePartie;
+  /** Raison de fin telle que le jeu la nomme : mat, pat, répétition… */
+  raison: string;
+  /** Nombre de demi-coups joués. */
+  nbCoups: number;
+  /** La faute la plus coûteuse de l'élève, si l'assistance en a relevé une. */
+  pireCoup: CoupMarquant | null;
+  /** Son meilleur moment, pour ne pas ne retenir que le négatif. */
+  beauCoup: CoupMarquant | null;
+  eleve: NiveauEleve;
+  memoire?: MemoirePhrases;
+}
+
+/** Numéro de coup affichable : « 24. » pour les blancs, « 24… » pour les noirs. */
+function numeroDe(ply: number): string {
+  return `${Math.floor(ply / 2) + 1}${ply % 2 === 0 ? '.' : '…'}`;
+}
+
+/**
+ * Le mot de la fin, dans la voix du professeur.
+ *
+ * Défaut corrigé : une fois le mat tombé, le professeur commentait le dernier
+ * coup comme si la partie continuait. Il lui manquait simplement de quoi
+ * parler au passé — une ouverture propre à l'issue, le coup qui a fait
+ * basculer la partie, et ce qu'il faut en retenir.
+ *
+ * Le coup charnière n'est pas recalculé : il vient du journal tenu par
+ * l'écran de jeu, qui a évalué chaque coup de l'élève au moment où il le
+ * jouait. C'est plus juste qu'une analyse d'après-coup, et instantané.
+ */
+export function commentaireFinPartie(prof: FicheProfesseur, ctx: ContexteFin): string {
+  const memoire = ctx.memoire;
+  const graine = `${prof.id}|fin|${ctx.issue}|${ctx.nbCoups}`;
+  const morceaux: string[] = [];
+
+  // 1. Ouverture propre à l'issue.
+  const registre = FIN_OUVERTURES[prof.id] ?? FIN_OUVERTURES.ephraim;
+  morceaux.push(piocherNeuf(registre[ctx.issue] ?? registre.nulle, graine, memoire));
+
+  // 2. Le coup qui a fait basculer la partie, quand il y en a un.
+  //    Seuil à un pion : en dessous, ce n'est pas un basculement, c'est une
+  //    imprécision, et la désigner comme « le moment décisif » serait faux.
+  if (ctx.pireCoup && ctx.pireCoup.perteCp >= 100) {
+    const intro = piocherNeuf(FIN_PIVOT[prof.id] ?? [], graine, memoire);
+    const pions = (ctx.pireCoup.perteCp / 100).toFixed(1).replace('.', ',');
+    morceaux.push(
+      `${intro} ${numeroDe(ctx.pireCoup.ply)} ${ctx.pireCoup.san}, qui coûte ${pions} pion${
+        ctx.pireCoup.perteCp >= 200 ? 's' : ''
+      }.`,
+    );
+    const lecon = ctx.pireCoup.motif ? LECON_MOTIF[ctx.pireCoup.motif] : undefined;
+    if (lecon) morceaux.push(`La prochaine fois : ${lecon}.`);
+  }
+
+  // 3. Le meilleur moment, pour ne pas s'en tenir au négatif. Réservé aux
+  //    parties perdues ou nulles : féliciter un vainqueur d'un bon coup isolé
+  //    sonnerait condescendant.
+  if (ctx.beauCoup && ctx.issue !== 'victoire') {
+    const intro = piocherNeuf(FIN_BEAU_COUP[prof.id] ?? [], graine, memoire);
+    morceaux.push(`${intro} ${numeroDe(ctx.beauCoup.ply)} ${ctx.beauCoup.san}.`);
+  }
+
+  // 4. Ce qu'il faut retenir.
+  const conseils = FIN_CONSEIL[prof.id] ?? FIN_CONSEIL.ephraim;
+  morceaux.push(piocherNeuf(ctx.issue === 'victoire' ? conseils.gagne : conseils.perdu, graine, memoire));
+
+  return morceaux.filter(Boolean).join(' ');
+}
+
+/** Traduit un résultat PGN et le camp de l'élève en issue vécue. */
+export function issueDe(resultat: string, monCamp: 'w' | 'b', raison: string): IssuePartie {
+  if (/abandon/i.test(raison)) return 'abandon';
+  if (resultat === '1/2-1/2' || resultat === '½-½') return 'nulle';
+  if (resultat === '1-0') return monCamp === 'w' ? 'victoire' : 'defaite';
+  if (resultat === '0-1') return monCamp === 'b' ? 'victoire' : 'defaite';
+  return 'nulle';
 }

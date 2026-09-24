@@ -172,16 +172,50 @@ export function classerCoup(e: EntreeClassification): ResultatClassification {
 }
 
 /**
- * Précision d'un joueur sur une partie, en pourcentage.
+ * Plafond de perte par coup, en centipions.
  *
- * Formule dérivée de celle de Lichess : chaque coup reçoit une note à partir
- * de la chute de probabilité de gain, puis on fait la moyenne. Une moyenne
- * simple est volontairement préférée à la moyenne pondérée par volatilité :
- * elle est plus lisible et ne fait pas dépendre la note de coups adverses.
+ * Borne commune à la précision et à la perte moyenne. Au-delà d'un plafond
+ * entier lâché d'un seul coup, la position est décidée et l'écart exact
+ * n'apprend plus rien.
  */
-export function precisionCoup(pdgAvant: number, pdgApres: number): number {
-  const chute = Math.max(0, pdgAvant - pdgApres);
-  const brut = 103.1668 * Math.exp(-0.04354 * chute) - 3.1669;
+export const PLAFOND_PERTE = 1000;
+
+/**
+ * Précision d'UN coup, à partir de la perte plafonnée.
+ *
+ * Pourquoi pas la probabilité de gain, comme Lichess et Chess.com. Cette
+ * probabilité SATURE : passé environ onze pions d'avance, elle est collée à
+ * ses bornes et ne peut plus bouger. Mesuré sur une partie de contrôle, tous
+ * les coups joués au-delà de ce seuil ressortaient à exactement 100 % pour
+ * les DEUX camps — y compris un coup lâchant 486 centipions. La moitié d'une
+ * partie déséquilibrée était donc notée parfaite pour tout le monde, et la
+ * note finale ne dépendait plus que des rares coups encore disputés. C'est ce
+ * qui permettait à un palier Débutant d'afficher 98 %.
+ *
+ * Lichess et Chess.com évitent ce travers en ÉCARTANT les positions décidées.
+ * Cela règle la précision mais fausse la perte moyenne : contre un adversaire
+ * beaucoup plus faible, il ne reste dans l'échantillon que l'ouverture, et le
+ * vainqueur ressort surévalué.
+ *
+ * On fonde donc la précision sur la perte elle-même, plafonnée. Les deux
+ * mesures deviennent monotones l'une de l'autre par construction, sur tous
+ * les coups de la partie, sans zone morte. La contrepartie est assumée : la
+ * note n'est plus directement comparable à celle de Lichess ou Chess.com.
+ *
+ * Coefficients ajustés pour épouser l'ancienne courbe sur le domaine
+ * disputé, et continuer à descendre au-delà au lieu de s'aplatir :
+ *
+ *     perte      cette courbe   ancienne (probabilité de gain)
+ *       0 cp       100,0 %          100,0 %
+ *      50 cp        81,6 %           81,3 %
+ *     100 cp        67,2 %           66,2 %
+ *     300 cp        31,4 %           31,4 %
+ *     600 cp        11,3 %           14,8 %
+ *    1000 cp         4,4 %            9,9 %   <- l'ancienne plafonnait ici
+ */
+export function precisionCoup(perteCp: number): number {
+  const perte = Math.max(0, Math.min(PLAFOND_PERTE, perteCp));
+  const brut = 97.3 * Math.exp(-0.00404 * perte) + 2.7;
   return Math.max(0, Math.min(100, brut));
 }
 
@@ -304,12 +338,105 @@ export function precisionPartie(precisions: number[], pdgSuccessives?: number[])
  */
 export const COUPS_MIN_ELO = 16;
 
+/**
+ * Au-delà de ce nombre de coups disputés, on ose une valeur unique.
+ *
+ * Entre les deux seuils, la partie porte une information réelle mais trop
+ * mince pour un chiffre unique : on annonce alors un intervalle. Dire « entre
+ * 600 et 1400 » est plus utile qu'un silence, et plus honnête qu'un « 1000 »
+ * que rien ne soutient.
+ */
+export const COUPS_VALEUR_UNIQUE = 25;
+
+/**
+ * Ancrages mesurés : perte moyenne observée pour chaque palier du moteur.
+ *
+ * Relevés par `npm run test:elo`, en faisant s'affronter des paliers VOISINS
+ * — seules les parties restées disputées portent une mesure exploitable. Deux
+ * parties par paire, les deux couleurs, quatre relevés par palier pour la
+ * plupart.
+ *
+ * Une courbe logarithmique unique a été essayée d'abord : elle laissait le
+ * palier le plus faible 343 Elo trop haut et le palier Club 248 Elo trop bas,
+ * parce que la relation entre perte et force n'est pas log-linéaire sur toute
+ * l'échelle. On interpole donc directement entre les ancrages, ce qui les
+ * respecte exactement et reste monotone entre eux.
+ */
+const ANCRAGES_ELO: { perte: number; elo: number }[] = [
+  { perte: 123, elo: 400 },
+  { perte: 94, elo: 800 },
+  { perte: 56, elo: 1200 },
+  { perte: 36, elo: 1600 },
+  { perte: 10, elo: 2000 },
+  { perte: 5, elo: 2400 },
+];
+
+/**
+ * Elo estimé, par interpolation entre les ancrages mesurés.
+ *
+ * L'interpolation se fait sur le LOGARITHME de la perte : c'est l'échelle sur
+ * laquelle les paliers s'espacent régulièrement. Au-delà des ancrages, la
+ * pente du segment extrême est prolongée, puis le résultat est borné.
+ */
 export function eloEstime(perteMoyenneCp: number, nbCoups: number): number | null {
   if (nbCoups < COUPS_MIN_ELO) return null;
-  const acpl = Math.max(1, perteMoyenneCp);
-  const elo = 3031 - 471 * Math.log(acpl);
+  const x = Math.log(Math.max(1, perteMoyenneCp));
+  const pts = ANCRAGES_ELO.map((a) => ({ x: Math.log(a.perte), y: a.elo }));
+
+  // Les ancrages vont de la perte la plus forte à la plus faible, donc de x
+  // décroissant : on cherche le segment qui encadre x.
+  let i = 0;
+  while (i < pts.length - 2 && x < pts[i + 1].x) i += 1;
+  const a = pts[i];
+  const b = pts[i + 1];
+  const pente = (b.y - a.y) / (b.x - a.x);
+  const elo = a.y + pente * (x - a.x);
   return Math.round(Math.max(250, Math.min(2900, elo)) / 10) * 10;
 }
+
+export interface EstimationElo {
+  /** Valeur centrale, toujours renseignée. */
+  valeur: number;
+  bas: number;
+  haut: number;
+  /** Faut-il présenter un intervalle plutôt qu'une valeur unique ? */
+  intervalle: boolean;
+  /** Nombre de coups disputés sur lesquels l'estimation repose. */
+  coups: number;
+}
+
+/**
+ * Estimation de niveau, avec son incertitude.
+ *
+ * Deux sources d'erreur, additionnées :
+ *
+ *  - l'ajustement de la courbe, dont l'écart absolu moyen mesuré sur les
+ *    paliers du moteur est d'environ 150 Elo ;
+ *  - l'échantillonnage. La perte par coup est très dispersée — quelques
+ *    fautes lourdes au milieu de coups corrects —, avec un coefficient de
+ *    variation proche de 1,2. L'erreur sur le logarithme de la moyenne vaut
+ *    donc environ 1,2 / racine(n), que la pente de la courbe convertit en Elo.
+ *
+ * Conséquence assumée : l'intervalle est large sur une partie courte. C'est
+ * la réalité de ce qu'une seule partie permet d'affirmer.
+ */
+export function estimationElo(perteMoyenneCp: number, nbCoups: number): EstimationElo | null {
+  const valeur = eloEstime(perteMoyenneCp, nbCoups);
+  if (valeur === null) return null;
+  const RESIDU_AJUSTEMENT = 150;
+  const DISPERSION = 1.2;
+  const PENTE = 471;
+  const demiLargeur = RESIDU_AJUSTEMENT + (PENTE * DISPERSION) / Math.sqrt(nbCoups);
+  const arrondi = (v: number) => Math.round(Math.max(250, Math.min(2900, v)) / 50) * 50;
+  return {
+    valeur,
+    bas: arrondi(valeur - demiLargeur),
+    haut: arrondi(valeur + demiLargeur),
+    intervalle: nbCoups < COUPS_VALEUR_UNIQUE,
+    coups: nbCoups,
+  };
+}
+
 
 /** Convertit une évaluation en probabilité de gain pour les blancs (0–100). */
 export function pdgBlancs(ev: Evaluation): number {

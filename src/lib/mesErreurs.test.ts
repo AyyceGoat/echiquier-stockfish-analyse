@@ -53,6 +53,8 @@ function rapport(coups: CoupAnalyse[]): RapportAnalyse {
     perteMoyenneNoirs: 70,
     eloBlancs: 1400,
     eloNoirs: 1200,
+    coupsRetenusBlancs: 20,
+    coupsRetenusNoirs: 20,
     bilanBlancs: {} as RapportAnalyse['bilanBlancs'],
     bilanNoirs: {} as RapportAnalyse['bilanNoirs'],
     momentsCles: [],

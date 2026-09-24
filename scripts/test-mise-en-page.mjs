@@ -26,7 +26,7 @@ const FORMATS = [
   ['desktop', 1440, 900],
 ];
 
-const ECRANS = ['/', '/libre', '/assiste', '/apprendre', '/analyse', '/historique', '/reglages'];
+const ECRANS = ['/', '/libre', '/assiste', '/apprendre', '/analyse', '/historique', '/reglages', '/voix'];
 
 mkdirSync(OUT, { recursive: true });
 const nav = await puppeteer.launch(optionsLancement());

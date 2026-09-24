@@ -22,6 +22,20 @@
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
     Permissions-Policy = "camera=(self), microphone=(), geolocation=()"
+    # Politique de sécurité du contenu.
+    #
+    # L'application n'injecte jamais de HTML et ne charge aucun script tiers :
+    # la politique peut donc être stricte sans rien casser. `wasm-unsafe-eval`
+    # est indispensable — Stockfish est un module WebAssembly, et sans lui le
+    # moteur ne démarre pas. `blob:` couvre les workers et les URL d'objet
+    # créées pour l'aperçu des images importées.
+    #
+    # `frame-ancestors 'none'` remplace X-Frame-Options, qu'aucun navigateur
+    # récent ne privilégie plus : le site ne doit jamais être encadré par un
+    # tiers.
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' blob:; media-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; upgrade-insecure-requests"
+    # HSTS : Netlify sert déjà en HTTPS, l'en-tête interdit la rétrogradation.
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
 
 # Le document lui-même ne doit jamais être servi depuis un cache périmé,
 # sinon une mise à jour ne parvient pas à l'appareil.

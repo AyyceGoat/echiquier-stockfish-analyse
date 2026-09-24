@@ -15,7 +15,7 @@
  * corrigé d'office — l'écran propose, l'utilisateur tranche.
  */
 
-import { createElement, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   coherenceDuPlateau,
   fenDepuisPlateau,
@@ -43,15 +43,30 @@ const PALETTE: (string | null)[] = [
 
 const COLONNES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 
-/** Rend une pièce avec les images de Chessground. */
+/**
+ * Rend une pièce avec les images de Chessground.
+ *
+ * L'élément `<piece>` est créé À LA MAIN plutôt que par React. Son nom ne
+ * comporte pas de tiret : React le prend pour une balise HTML inconnue et
+ * émet un avertissement à chaque rendu. Ce bruit masquait les vraies erreurs
+ * de console dans les tests. Le créer soi-même est aussi ce que fait
+ * Chessground, et la feuille de style le cible par son nom d'élément — un
+ * `div` de remplacement perdrait les images.
+ */
 function Piece({ symbole }: { symbole: string }) {
   const role = ROLES[symbole.toLowerCase()];
   const couleur = symbole === symbole.toUpperCase() ? 'white' : 'black';
-  return (
-    <div className="cg-wrap piece-editeur">
-      {createElement('piece', { className: `${role} ${couleur}` })}
-    </div>
-  );
+  const hote = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const conteneur = hote.current;
+    if (!conteneur) return;
+    const piece = document.createElement('piece');
+    piece.className = `${role} ${couleur}`;
+    conteneur.replaceChildren(piece);
+  }, [role, couleur]);
+
+  return <div ref={hote} className="cg-wrap piece-editeur" aria-hidden />;
 }
 
 export interface PositionValidee {
