@@ -34,7 +34,8 @@
     "test:commentaires": "node scripts/test-commentaires.mjs",
     "test:elo": "node scripts/test-elo-paliers.mjs",
     "test:fin": "node scripts/test-fin-et-variete.mjs",
-    "test:erreurs": "node scripts/test-mes-erreurs.mjs"
+    "test:erreurs": "node scripts/test-mes-erreurs.mjs",
+    "test:deploye": "node scripts/test-demarrage-deploye.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",
