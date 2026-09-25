@@ -46,6 +46,15 @@ export interface Reglages {
    * une contrainte des navigateurs, pas un délai ajouté ici.
    */
   voix: boolean;
+  /**
+   * Voix attribuée à chaque professeur, par identifiant de voix neuronale.
+   *
+   * Vide tant que l'utilisateur n'a pas choisi : le professeur reste alors
+   * silencieux. On ne retombe jamais sur la synthèse du navigateur, qui
+   * n'offre en pratique qu'une voix par genre et fait sonner les quatre
+   * personnages comme deux.
+   */
+  voixProfesseurs: Record<string, string>;
   /** Animation des pièces (désactivable sur appareil lent). */
   animations: boolean;
   /** Professeur choisi pour le jeu assisté. */
@@ -73,6 +82,7 @@ export const REGLAGES_PAR_DEFAUT: Reglages = {
   coordonnees: true,
   sons: false,
   voix: true,
+  voixProfesseurs: {},
   animations: true,
   professeur: PROFESSEUR_PAR_DEFAUT,
   niveauEleve: 'intermediaire',

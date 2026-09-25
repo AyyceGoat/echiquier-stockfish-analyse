@@ -35,7 +35,8 @@
     "test:elo": "node scripts/test-elo-paliers.mjs",
     "test:fin": "node scripts/test-fin-et-variete.mjs",
     "test:erreurs": "node scripts/test-mes-erreurs.mjs",
-    "test:deploye": "node scripts/test-demarrage-deploye.mjs"
+    "test:deploye": "node scripts/test-demarrage-deploye.mjs",
+    "voix": "node --experimental-strip-types scripts/preparer-voix.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.125.0",

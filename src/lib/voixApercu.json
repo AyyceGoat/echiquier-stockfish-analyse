@@ -1,0 +1,93 @@
+[
+  {
+    "id": "fr-FR-DeniseNeural",
+    "libelle": "Denise",
+    "pays": "France",
+    "genre": "Femme",
+    "fichier": "/voix/apercu/fr-FR-DeniseNeural.mp3"
+  },
+  {
+    "id": "fr-FR-EloiseNeural",
+    "libelle": "Éloise",
+    "pays": "France",
+    "genre": "Femme",
+    "fichier": "/voix/apercu/fr-FR-EloiseNeural.mp3"
+  },
+  {
+    "id": "fr-FR-VivienneMultilingualNeural",
+    "libelle": "Vivienne",
+    "pays": "France",
+    "genre": "Femme",
+    "fichier": "/voix/apercu/fr-FR-VivienneMultilingualNeural.mp3"
+  },
+  {
+    "id": "fr-FR-HenriNeural",
+    "libelle": "Henri",
+    "pays": "France",
+    "genre": "Homme",
+    "fichier": "/voix/apercu/fr-FR-HenriNeural.mp3"
+  },
+  {
+    "id": "fr-FR-RemyMultilingualNeural",
+    "libelle": "Rémy",
+    "pays": "France",
+    "genre": "Homme",
+    "fichier": "/voix/apercu/fr-FR-RemyMultilingualNeural.mp3"
+  },
+  {
+    "id": "fr-BE-CharlineNeural",
+    "libelle": "Charline",
+    "pays": "Belgique",
+    "genre": "Femme",
+    "fichier": "/voix/apercu/fr-BE-CharlineNeural.mp3"
+  },
+  {
+    "id": "fr-BE-GerardNeural",
+    "libelle": "Gérard",
+    "pays": "Belgique",
+    "genre": "Homme",
+    "fichier": "/voix/apercu/fr-BE-GerardNeural.mp3"
+  },
+  {
+    "id": "fr-CH-ArianeNeural",
+    "libelle": "Ariane",
+    "pays": "Suisse",
+    "genre": "Femme",
+    "fichier": "/voix/apercu/fr-CH-ArianeNeural.mp3"
+  },
+  {
+    "id": "fr-CH-FabriceNeural",
+    "libelle": "Fabrice",
+    "pays": "Suisse",
+    "genre": "Homme",
+    "fichier": "/voix/apercu/fr-CH-FabriceNeural.mp3"
+  },
+  {
+    "id": "fr-CA-SylvieNeural",
+    "libelle": "Sylvie",
+    "pays": "Canada",
+    "genre": "Femme",
+    "fichier": "/voix/apercu/fr-CA-SylvieNeural.mp3"
+  },
+  {
+    "id": "fr-CA-AntoineNeural",
+    "libelle": "Antoine",
+    "pays": "Canada",
+    "genre": "Homme",
+    "fichier": "/voix/apercu/fr-CA-AntoineNeural.mp3"
+  },
+  {
+    "id": "fr-CA-JeanNeural",
+    "libelle": "Jean",
+    "pays": "Canada",
+    "genre": "Homme",
+    "fichier": "/voix/apercu/fr-CA-JeanNeural.mp3"
+  },
+  {
+    "id": "fr-CA-ThierryNeural",
+    "libelle": "Thierry",
+    "pays": "Canada",
+    "genre": "Homme",
+    "fichier": "/voix/apercu/fr-CA-ThierryNeural.mp3"
+  }
+]

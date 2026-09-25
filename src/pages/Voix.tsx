@@ -1,158 +1,185 @@
 /**
- * Page d'écoute des voix.
+ * Page d'écoute et d'attribution des voix.
  *
- * Demandée avant intégration : entendre les quatre professeurs dire la même
- * phrase, pour juger les timbres côte à côte. Elle sert aussi de diagnostic,
- * parce que la qualité dépend entièrement de l'appareil — très correcte sur
- * iOS et macOS, franchement mécanique sur Windows. Autant le montrer que le
- * laisser découvrir.
+ * La synthèse du navigateur a été abandonnée : mécanique sur Windows, et
+ * surtout limitée en pratique à une voix par genre, si bien que les quatre
+ * professeurs sonnaient comme deux personnes parlant à des vitesses
+ * différentes. Les voix viennent maintenant des voix neuronales de Microsoft,
+ * pré-générées par `npm run voix`.
+ *
+ * Cette page ne décide rien : elle fait entendre les treize voix françaises
+ * disant le MÊME commentaire réel, et laisse attribuer les quatre.
  */
 
-import { useCallback, useEffect, useState } from 'react';
-import {
-  choisirVoix,
-  debloquerVoix,
-  dire,
-  repartirVoix,
-  taire,
-  timbreDe,
-  voixFrancaises,
-  voixNavigateurDisponible,
-} from '../lib/voix.ts';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import apercu from '../lib/voixApercu.json';
+import { useReglages } from '../contexte.tsx';
 import { PROFESSEURS } from '../lib/professeurs.ts';
 import { PortraitProfesseur } from '../ui/PortraitProfesseur.tsx';
 import { Alerte, Bouton, Carte, EnTetePage, Etiquette } from '../ui/composants.tsx';
 
-/** Même phrase pour tous : c'est le timbre qu'on compare, pas le texte. */
-const PHRASE = 'Ce coup laisse votre cavalier en prise. Il fallait jouer la tour en d1.';
+interface VoixApercu {
+  id: string;
+  libelle: string;
+  pays: string;
+  genre: string;
+  fichier: string;
+}
+
+const VOIX = apercu as VoixApercu[];
+
+/** Le commentaire lu par toutes les voix, reproduit ici pour le lire à l'écran. */
+const PHRASE =
+  'Non, c’est une faute grave. Ce coup laisse votre cavalier en e4 en prise, et la tour en d1 ' +
+  'était le seul coup qui tenait. Reprenez l’initiative maintenant, ou cette partie est déjà écrite.';
 
 export function Voix({ naviguer }: { naviguer: (v: string) => void }) {
-  const [voix, setVoix] = useState<SpeechSynthesisVoice[]>([]);
+  const { reglages, majReglages } = useReglages();
   const [enCours, setEnCours] = useState<string | null>(null);
+  const lecteur = useRef<HTMLAudioElement | null>(null);
 
-  /**
-   * La liste des voix arrive de façon asynchrone sur la plupart des
-   * navigateurs : vide au premier appel, remplie ensuite. On écoute donc
-   * l'événement plutôt que de lire une fois.
-   */
   useEffect(() => {
-    if (!voixNavigateurDisponible()) return;
-    const relire = () => setVoix(voixFrancaises());
-    relire();
-    speechSynthesis.addEventListener('voiceschanged', relire);
     return () => {
-      speechSynthesis.removeEventListener('voiceschanged', relire);
-      taire();
+      lecteur.current?.pause();
+      lecteur.current = null;
     };
   }, []);
 
-  const attribuees = repartirVoix(
-    PROFESSEURS.map((p) => p.id),
-    voix,
-  );
+  const ecouter = useCallback((v: VoixApercu) => {
+    lecteur.current?.pause();
+    const audio = new Audio(v.fichier);
+    lecteur.current = audio;
+    setEnCours(v.id);
+    audio.onended = () => setEnCours(null);
+    audio.onerror = () => setEnCours(null);
+    void audio.play().catch(() => setEnCours(null));
+  }, []);
 
-  const ecouter = useCallback(
-    (id: string) => {
-      debloquerVoix();
-      setEnCours(id);
-      dire({
-        idProfesseur: id,
-        texte: PHRASE,
-        voix: attribuees[id] ?? undefined,
-        surFin: () => setEnCours(null),
-      });
-    },
-    [attribuees],
-  );
+  const attribuees = reglages.voixProfesseurs ?? {};
+  const parPays = [...new Set(VOIX.map((v) => v.pays))];
 
-  const indisponible = !voixNavigateurDisponible();
+  /** Une voix attribuée deux fois ferait sonner deux professeurs pareil. */
+  const doublons = Object.values(attribuees).filter(
+    (id, i, tous) => id && tous.indexOf(id) !== i,
+  );
 
   return (
     <div className="space-y-4">
       <EnTetePage titre="Les voix des professeurs">
-        Les quatre professeurs disent la même phrase. Ce qui change, c’est le timbre, la hauteur
-        et le débit.
+        Les treize voix françaises disponibles disent le même commentaire. Écoutez-les, puis
+        attribuez-en une à chaque professeur.
       </EnTetePage>
 
-      {indisponible ? (
-        <Alerte titre="Ce navigateur ne sait pas parler" ton="alerte">
-          <p>
-            La synthèse vocale n’est pas disponible ici. Les professeurs continueront de
-            s’exprimer par écrit.
-          </p>
-        </Alerte>
-      ) : voix.length === 0 ? (
-        <Alerte titre="Aucune voix française installée" ton="alerte">
-          <p>
-            Cet appareil ne propose aucune voix française. Sur Windows, elles s’ajoutent depuis
-            Paramètres puis Heure et langue. Sur Android, depuis les paramètres de synthèse
-            vocale.
-          </p>
-        </Alerte>
-      ) : (
-        <Carte titre="Ce que cet appareil propose">
-          <p className="text-sm text-[var(--color-texte-doux)]">
-            {voix.length} voix française{voix.length > 1 ? 's' : ''} détectée
-            {voix.length > 1 ? 's' : ''}. Quand l’appareil en offre moins de quatre, plusieurs
-            professeurs partagent la même voix : seuls la hauteur et le débit les distinguent
-            alors.
-          </p>
-          <ul className="mt-2 flex flex-wrap gap-2">
-            {voix.map((v) => (
-              <li key={v.name}>
-                <Etiquette>{v.name}</Etiquette>
-              </li>
-            ))}
-          </ul>
-        </Carte>
-      )}
+      <Carte titre="Le commentaire lu">
+        <p className="text-sm italic text-[var(--color-texte-doux)]">« {PHRASE} »</p>
+        <p className="mt-2 text-xs text-[var(--color-texte-doux)]">
+          Un vrai commentaire, et non une phrase neutre : on entend ainsi comment chaque voix dit
+          la notation et gère la ponctuation.
+        </p>
+      </Carte>
 
-      <div className="grid gap-3 sm:grid-cols-2">
-        {PROFESSEURS.map((prof) => {
-          const timbre = timbreDe(prof.id);
-          const attribuee = attribuees[prof.id] ?? choisirVoix(timbre, voix);
-          return (
-            <Carte key={prof.id} titre={prof.nom}>
-              <div className="flex items-start gap-3">
-                <div className="w-20 shrink-0">
+      {doublons.length > 0 ? (
+        <Alerte titre="Deux professeurs partagent la même voix" ton="alerte">
+          <p>
+            C’est exactement ce qu’il fallait éviter. Attribuez une voix différente à chacun.
+          </p>
+        </Alerte>
+      ) : null}
+
+      {/* --- Attribution ---------------------------------------------------- */}
+      <Carte titre="Qui parle avec quelle voix">
+        <div className="space-y-4">
+          {PROFESSEURS.map((prof) => {
+            const choisie = VOIX.find((v) => v.id === attribuees[prof.id]) ?? null;
+            return (
+              <div key={prof.id} className="flex items-start gap-3">
+                <div className="w-16 shrink-0">
                   <PortraitProfesseur
                     prof={prof}
-                    parle={enCours === prof.id}
+                    parle={enCours !== null && choisie?.id === enCours}
                     cleEntree={prof.id}
                     className="pp-pastille"
                   />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-sm text-[var(--color-texte-doux)]">{prof.role}</p>
-                  <p className="mt-1 text-xs text-[var(--color-texte-doux)]">
-                    Voix : {attribuee?.name ?? 'aucune'} · hauteur{' '}
-                    {timbre.hauteur.toFixed(2).replace('.', ',')} · débit{' '}
-                    {timbre.debit.toFixed(2).replace('.', ',')}
-                  </p>
-                  <Bouton
-                    variante="principal"
-                    className="mt-3"
-                    disabled={indisponible || voix.length === 0}
-                    onClick={() => ecouter(prof.id)}
-                  >
-                    {enCours === prof.id ? 'En train de parler…' : 'Écouter'}
-                  </Bouton>
+                  <p className="text-sm font-medium">{prof.nom}</p>
+                  <p className="text-xs text-[var(--color-texte-doux)]">{prof.role}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <select
+                      value={attribuees[prof.id] ?? ''}
+                      onChange={(e) =>
+                        majReglages({
+                          voixProfesseurs: { ...attribuees, [prof.id]: e.target.value },
+                        })
+                      }
+                      aria-label={`Voix de ${prof.nom}`}
+                      className="cible-tactile min-w-0 flex-1 rounded-[var(--radius-md)] border border-[var(--color-bordure)] bg-[var(--color-fond)] px-3 py-2 text-sm"
+                    >
+                      <option value="">— aucune voix —</option>
+                      {VOIX.map((v) => (
+                        <option key={v.id} value={v.id}>
+                          {v.libelle} · {v.genre} · {v.pays}
+                        </option>
+                      ))}
+                    </select>
+                    {choisie ? (
+                      <Bouton variante="discret" onClick={() => ecouter(choisie)}>
+                        {enCours === choisie.id ? 'Parle…' : 'Écouter'}
+                      </Bouton>
+                    ) : null}
+                  </div>
                 </div>
               </div>
-            </Carte>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      </Carte>
 
-      <Carte titre="Pourquoi la qualité varie">
+      {/* --- Toutes les voix ------------------------------------------------ */}
+      {parPays.map((pays) => (
+        <Carte key={pays} titre={`Voix de ${pays}`}>
+          <ul className="space-y-2">
+            {VOIX.filter((v) => v.pays === pays).map((v) => {
+              const pour = PROFESSEURS.filter((p) => attribuees[p.id] === v.id);
+              return (
+                <li key={v.id} className="flex flex-wrap items-center gap-2">
+                  <Bouton variante="discret" onClick={() => ecouter(v)}>
+                    {enCours === v.id ? '▌▌ Parle…' : '▶ Écouter'}
+                  </Bouton>
+                  <span className="text-sm font-medium">{v.libelle}</span>
+                  <Etiquette>{v.genre}</Etiquette>
+                  <span className="font-mono text-xs text-[var(--color-texte-doux)]">{v.id}</span>
+                  {pour.map((p) => (
+                    <Etiquette key={p.id} ton="succes">
+                      {p.nom}
+                    </Etiquette>
+                  ))}
+                </li>
+              );
+            })}
+          </ul>
+        </Carte>
+      ))}
+
+      <Carte titre="Ce qu’il se passe ensuite">
         <p className="text-sm text-[var(--color-texte-doux)]">
-          Ces voix viennent du système, pas de l’application : elles sont gratuites, fonctionnent
-          hors ligne et ne dépendent d’aucun service. En contrepartie, leur naturel dépend
-          entièrement de l’appareil. Sur iPhone et sur Mac, les voix françaises sont bonnes. Sur
-          Windows, le résultat reste mécanique, et aucun réglage de hauteur ne le corrigera.
+          Une fois les quatre voix attribuées, tout le texte invariable — accueils, discours de
+          fin de partie, registres de commentaires — est pré-généré et livré avec l’application.
+          Le texte variable est synthétisé à la demande puis conservé définitivement : une phrase
+          déjà dite n’est jamais regénérée.
+        </p>
+        <p className="mt-2 text-sm text-[var(--color-texte-doux)]">
+          Si l’audio n’est pas prêt à temps, le professeur reste silencieux. Il ne bascule jamais
+          sur la voix du navigateur.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
-          <Bouton variante="discret" onClick={() => taire()}>
+          <Bouton
+            variante="discret"
+            onClick={() => {
+              lecteur.current?.pause();
+              setEnCours(null);
+            }}
+          >
             Couper le son
           </Bouton>
           <Bouton variante="discret" onClick={() => naviguer('/reglages')}>
