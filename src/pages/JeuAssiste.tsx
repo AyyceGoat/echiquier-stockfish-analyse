@@ -125,6 +125,8 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
    * analyse d'après-coup, et instantané.
    */
   const journal = useRef<CoupMarquant[]>([]);
+  /** Accueil de la partie en cours, tiré une seule fois. */
+  const salutation = useRef<string | null>(null);
   const [finDite, setFinDite] = useState(false);
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [promotionEnAttente, setPromotion] = useState<{ depuis: string; vers: string } | null>(null);
@@ -385,8 +387,17 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
       // dès le lancement, avant le premier coup — auparavant il n'existait
       // qu'à l'intérieur de la carte de verdict, donc nulle part tant qu'on
       // n'avait pas joué.
-      setCommentaire(salutationDe(prof, memoire.current));
-      retenirMemoire(prof.id, memoire.current);
+      // La salutation est tirée UNE FOIS par partie et conservée.
+      //
+      // Sa graine dépend de l'horloge, pour qu'une nouvelle partie n'ouvre
+      // pas comme la précédente. Sans mémorisation, chaque réexécution de
+      // cet effet en tirait une autre, et l'accueil changeait sous les yeux
+      // du joueur.
+      if (salutation.current === null) {
+        salutation.current = salutationDe(prof, memoire.current);
+        retenirMemoire(prof.id, memoire.current);
+      }
+      setCommentaire(salutation.current);
       return;
     }
     let vivant = true;
@@ -562,6 +573,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
       // l'historique d'une partie sur l'autre épuiserait les tournures et
       // forcerait le professeur à se répéter dès la deuxième.
       journal.current = [];
+      salutation.current = null;
       setFinDite(false);
       setEnregistree(false);
       setErreur(null);

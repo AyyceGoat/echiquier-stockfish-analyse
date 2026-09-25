@@ -72,6 +72,16 @@ export async function empreinteReplique(voix: string, texte: string): Promise<st
     .slice(0, 24);
 }
 
+/**
+ * Coupe-circuit de la synthèse à la demande.
+ *
+ * Dès qu'un appel échoue — service absent, réseau coupé, point d'entrée non
+ * déployé — on cesse d'appeler pour la durée de la session. Sans cela, chaque
+ * phrase de chaque commentaire relançait une requête vouée à échouer : du
+ * bruit dans la console, de la latence, et rien de plus.
+ */
+let syntheseIndisponible = false;
+
 /** URL d'objet déjà créées, pour ne pas les recréer à chaque réplique. */
 const urlsCache = new Map<string, string>();
 
@@ -149,6 +159,7 @@ export async function urlAudio(voix: string, texte: string): Promise<string | nu
   if (enCache) return enCache;
 
   // 3. Synthèse à la demande, avec renoncement au-delà du délai.
+  if (syntheseIndisponible) return null;
   const abandon = new AbortController();
   const minuteur = setTimeout(() => abandon.abort(), DELAI_MAX_MS);
   try {
@@ -158,15 +169,21 @@ export async function urlAudio(voix: string, texte: string): Promise<string | nu
       body: JSON.stringify({ voix, texte: propre }),
       signal: abandon.signal,
     });
-    if (!reponse.ok) return null;
+    if (!reponse.ok) {
+      // Un 404 signale un point d'entrée absent : inutile de réessayer.
+      if (reponse.status === 404 || reponse.status === 403) syntheseIndisponible = true;
+      return null;
+    }
     const audio = await reponse.blob();
     if (audio.size === 0) return null;
     await versLeCache(cle, audio);
     const url = URL.createObjectURL(audio);
     urlsCache.set(cle, url);
     return url;
-  } catch {
-    // Réseau absent, délai dépassé, service indisponible : on se tait.
+  } catch (e) {
+    // Un délai dépassé peut n'être qu'un pic de latence : on ne coupe le
+    // circuit que sur une erreur de transport, pas sur une lenteur.
+    if (!(e instanceof DOMException && e.name === 'AbortError')) syntheseIndisponible = true;
     return null;
   } finally {
     clearTimeout(minuteur);

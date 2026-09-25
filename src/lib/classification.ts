@@ -361,14 +361,21 @@ export const COUPS_VALEUR_UNIQUE = 25;
  * parce que la relation entre perte et force n'est pas log-linéaire sur toute
  * l'échelle. On interpole donc directement entre les ancrages, ce qui les
  * respecte exactement et reste monotone entre eux.
+ *
+ * Les valeurs sont la MOYENNE DE DEUX SÉRIES indépendantes. Une seule série
+ * donnait des ancrages qui ne tenaient pas à la suivante : le palier Débutant,
+ * mesuré à 85 cp puis à 75 cp, ressortait à +180 Elo de sa valeur annoncée dès
+ * qu'on rejouait. C'est l'ordre de grandeur du bruit d'échantillonnage sur
+ * quatre parties, et c'est aussi pourquoi l'estimation s'accompagne d'une
+ * incertitude plutôt que d'être donnée comme exacte.
  */
 const ANCRAGES_ELO: { perte: number; elo: number }[] = [
-  { perte: 123, elo: 400 },
-  { perte: 94, elo: 800 },
-  { perte: 56, elo: 1200 },
-  { perte: 36, elo: 1600 },
-  { perte: 10, elo: 2000 },
-  { perte: 5, elo: 2400 },
+  { perte: 124, elo: 400 },
+  { perte: 80, elo: 800 },
+  { perte: 62, elo: 1200 },
+  { perte: 27, elo: 1600 },
+  { perte: 12, elo: 2000 },
+  { perte: 4, elo: 2400 },
 ];
 
 /**

@@ -4,6 +4,7 @@
     "libelle": "Denise",
     "pays": "France",
     "genre": "Femme",
+    "multilingue": false,
     "fichier": "/voix/apercu/fr-FR-DeniseNeural.mp3"
   },
   {
@@ -11,6 +12,7 @@
     "libelle": "Éloise",
     "pays": "France",
     "genre": "Femme",
+    "multilingue": false,
     "fichier": "/voix/apercu/fr-FR-EloiseNeural.mp3"
   },
   {
@@ -18,6 +20,7 @@
     "libelle": "Vivienne",
     "pays": "France",
     "genre": "Femme",
+    "multilingue": false,
     "fichier": "/voix/apercu/fr-FR-VivienneMultilingualNeural.mp3"
   },
   {
@@ -25,6 +28,7 @@
     "libelle": "Henri",
     "pays": "France",
     "genre": "Homme",
+    "multilingue": false,
     "fichier": "/voix/apercu/fr-FR-HenriNeural.mp3"
   },
   {
@@ -32,6 +36,7 @@
     "libelle": "Rémy",
     "pays": "France",
     "genre": "Homme",
+    "multilingue": false,
     "fichier": "/voix/apercu/fr-FR-RemyMultilingualNeural.mp3"
   },
   {
@@ -39,6 +44,7 @@
     "libelle": "Charline",
     "pays": "Belgique",
     "genre": "Femme",
+    "multilingue": false,
     "fichier": "/voix/apercu/fr-BE-CharlineNeural.mp3"
   },
   {
@@ -46,6 +52,7 @@
     "libelle": "Gérard",
     "pays": "Belgique",
     "genre": "Homme",
+    "multilingue": false,
     "fichier": "/voix/apercu/fr-BE-GerardNeural.mp3"
   },
   {
@@ -53,6 +60,7 @@
     "libelle": "Ariane",
     "pays": "Suisse",
     "genre": "Femme",
+    "multilingue": false,
     "fichier": "/voix/apercu/fr-CH-ArianeNeural.mp3"
   },
   {
@@ -60,6 +68,7 @@
     "libelle": "Fabrice",
     "pays": "Suisse",
     "genre": "Homme",
+    "multilingue": false,
     "fichier": "/voix/apercu/fr-CH-FabriceNeural.mp3"
   },
   {
@@ -67,6 +76,7 @@
     "libelle": "Sylvie",
     "pays": "Canada",
     "genre": "Femme",
+    "multilingue": false,
     "fichier": "/voix/apercu/fr-CA-SylvieNeural.mp3"
   },
   {
@@ -74,6 +84,7 @@
     "libelle": "Antoine",
     "pays": "Canada",
     "genre": "Homme",
+    "multilingue": false,
     "fichier": "/voix/apercu/fr-CA-AntoineNeural.mp3"
   },
   {
@@ -81,6 +92,7 @@
     "libelle": "Jean",
     "pays": "Canada",
     "genre": "Homme",
+    "multilingue": false,
     "fichier": "/voix/apercu/fr-CA-JeanNeural.mp3"
   },
   {
@@ -88,6 +100,87 @@
     "libelle": "Thierry",
     "pays": "Canada",
     "genre": "Homme",
+    "multilingue": false,
     "fichier": "/voix/apercu/fr-CA-ThierryNeural.mp3"
+  },
+  {
+    "id": "en-US-AndrewMultilingualNeural",
+    "libelle": "Andrew",
+    "pays": "Multilingue",
+    "genre": "Homme",
+    "multilingue": true,
+    "fichier": "/voix/apercu/en-US-AndrewMultilingualNeural.mp3"
+  },
+  {
+    "id": "en-US-BrianMultilingualNeural",
+    "libelle": "Brian",
+    "pays": "Multilingue",
+    "genre": "Homme",
+    "multilingue": true,
+    "fichier": "/voix/apercu/en-US-BrianMultilingualNeural.mp3"
+  },
+  {
+    "id": "en-US-AvaMultilingualNeural",
+    "libelle": "Ava",
+    "pays": "Multilingue",
+    "genre": "Femme",
+    "multilingue": true,
+    "fichier": "/voix/apercu/en-US-AvaMultilingualNeural.mp3"
+  },
+  {
+    "id": "en-US-EmmaMultilingualNeural",
+    "libelle": "Emma",
+    "pays": "Multilingue",
+    "genre": "Femme",
+    "multilingue": true,
+    "fichier": "/voix/apercu/en-US-EmmaMultilingualNeural.mp3"
+  },
+  {
+    "id": "en-AU-WilliamMultilingualNeural",
+    "libelle": "William",
+    "pays": "Multilingue",
+    "genre": "Homme",
+    "multilingue": true,
+    "fichier": "/voix/apercu/en-AU-WilliamMultilingualNeural.mp3"
+  },
+  {
+    "id": "de-DE-FlorianMultilingualNeural",
+    "libelle": "Florian",
+    "pays": "Multilingue",
+    "genre": "Homme",
+    "multilingue": true,
+    "fichier": "/voix/apercu/de-DE-FlorianMultilingualNeural.mp3"
+  },
+  {
+    "id": "de-DE-SeraphinaMultilingualNeural",
+    "libelle": "Seraphina",
+    "pays": "Multilingue",
+    "genre": "Femme",
+    "multilingue": true,
+    "fichier": "/voix/apercu/de-DE-SeraphinaMultilingualNeural.mp3"
+  },
+  {
+    "id": "it-IT-GiuseppeMultilingualNeural",
+    "libelle": "Giuseppe",
+    "pays": "Multilingue",
+    "genre": "Homme",
+    "multilingue": true,
+    "fichier": "/voix/apercu/it-IT-GiuseppeMultilingualNeural.mp3"
+  },
+  {
+    "id": "ko-KR-HyunsuMultilingualNeural",
+    "libelle": "Hyunsu",
+    "pays": "Multilingue",
+    "genre": "Homme",
+    "multilingue": true,
+    "fichier": "/voix/apercu/ko-KR-HyunsuMultilingualNeural.mp3"
+  },
+  {
+    "id": "pt-BR-ThalitaMultilingualNeural",
+    "libelle": "Thalita",
+    "pays": "Multilingue",
+    "genre": "Femme",
+    "multilingue": true,
+    "fichier": "/voix/apercu/pt-BR-ThalitaMultilingualNeural.mp3"
   }
 ]

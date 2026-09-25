@@ -7,7 +7,8 @@
  * différentes. Les voix viennent maintenant des voix neuronales de Microsoft,
  * pré-générées par `npm run voix`.
  *
- * Cette page ne décide rien : elle fait entendre les treize voix françaises
+ * Cette page ne décide rien : elle fait entendre les vingt-trois voix
+ * capables de parler français — treize françaises et dix multilingues —
  * disant le MÊME commentaire réel, et laisse attribuer les quatre.
  */
 
@@ -23,6 +24,8 @@ interface VoixApercu {
   libelle: string;
   pays: string;
   genre: string;
+  /** Voix entraînée sur plusieurs langues, et non sur le seul français. */
+  multilingue?: boolean;
   fichier: string;
 }
 
@@ -56,7 +59,13 @@ export function Voix({ naviguer }: { naviguer: (v: string) => void }) {
   }, []);
 
   const attribuees = reglages.voixProfesseurs ?? {};
-  const parPays = [...new Set(VOIX.map((v) => v.pays))];
+  // Les multilingues en premier : ce sont les plus récentes du service, et
+  // les deux meilleures voix françaises — Rémy et Vivienne — sont justement
+  // de ce type.
+  const parPays = [
+    'Multilingue',
+    ...[...new Set(VOIX.map((v) => v.pays))].filter((p) => p !== 'Multilingue'),
+  ].filter((p) => VOIX.some((v) => v.pays === p));
 
   /** Une voix attribuée deux fois ferait sonner deux professeurs pareil. */
   const doublons = Object.values(attribuees).filter(
@@ -66,8 +75,8 @@ export function Voix({ naviguer }: { naviguer: (v: string) => void }) {
   return (
     <div className="space-y-4">
       <EnTetePage titre="Les voix des professeurs">
-        Les treize voix françaises disponibles disent le même commentaire. Écoutez-les, puis
-        attribuez-en une à chaque professeur.
+        Vingt-trois voix capables de parler français disent le même commentaire : treize
+        françaises et dix multilingues. Écoutez-les, puis attribuez-en une à chaque professeur.
       </EnTetePage>
 
       <Carte titre="Le commentaire lu">
@@ -137,7 +146,18 @@ export function Voix({ naviguer }: { naviguer: (v: string) => void }) {
 
       {/* --- Toutes les voix ------------------------------------------------ */}
       {parPays.map((pays) => (
-        <Carte key={pays} titre={`Voix de ${pays}`}>
+        <Carte
+          key={pays}
+          titre={pays === 'Multilingue' ? 'Voix multilingues' : `Voix de ${pays}`}
+        >
+          {pays === 'Multilingue' ? (
+            <p className="mb-3 text-sm text-[var(--color-texte-doux)]">
+              Entraînées sur plusieurs langues plutôt que sur le seul français. Ce sont les plus
+              récentes du service, et elles prononcent le français correctement malgré une langue
+              d’origine différente — Rémy et Vivienne, les deux voix françaises qui se détachent,
+              sont exactement de ce type.
+            </p>
+          ) : null}
           <ul className="space-y-2">
             {VOIX.filter((v) => v.pays === pays).map((v) => {
               const pour = PROFESSEURS.filter((p) => attribuees[p.id] === v.id);

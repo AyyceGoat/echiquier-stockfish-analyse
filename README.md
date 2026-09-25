@@ -290,6 +290,50 @@ La clé n'est jamais incluse dans le bundle client.
 - Table de hachage réglée dynamiquement : 16 Mo sur iOS (au-delà, Safari fait
   recharger l'onglet), 32 Mo sur les autres mobiles, 128 Mo sur ordinateur.
 
+### Les voix des professeurs
+
+La synthèse vocale du navigateur a été essayée puis retirée. Elle est
+mécanique sur Windows, et surtout elle n'offre en pratique qu'une voix par
+genre : les quatre professeurs sonnaient comme deux personnes parlant à des
+vitesses différentes.
+
+Les voix viennent des voix neuronales de Microsoft, par le même service que
+`edge-tts` — gratuit, sans compte, sans clé, sans carte. Vingt-trois voix
+capables de parler français ont été mises à l'écoute sur `#/voix` ; quatre
+sont retenues :
+
+| professeur | voix |
+|---|---|
+| L'Homme Ultime | `fr-FR-HenriNeural` |
+| Ephraim | `fr-FR-RemyMultilingualNeural` |
+| Johana | `fr-FR-EloiseNeural` |
+| Serena | `fr-FR-VivienneMultilingualNeural` |
+
+**L'unité de synthèse est la phrase, pas le commentaire.** Un commentaire est
+assemblé à partir de fragments qui sont chacun une phrase complète :
+pré-générer chaque combinaison serait combinatoirement impossible, pré-générer
+chaque phrase est tractable. L'enchaînement s'entend comme une diction
+normale, puisque ce sont de vraies phrases et non des morceaux.
+
+Trois sources, dans cet ordre :
+
+1. `npm run voix figees <voix…>` pré-génère tout l'invariable, livré avec
+   l'application ;
+2. le texte variable déjà entendu vient d'IndexedDB, conservé définitivement ;
+3. sinon `/api/voix` le synthétise, et le résultat entre au cache.
+
+**Et si rien n'aboutit en deux secondes et demie, le professeur se tait.** Le
+repli sur la voix du navigateur a été explicitement écarté : mieux vaut le
+silence qu'une voix désagréable. Le commentaire s'écrit à l'écran pendant ce
+délai, et une voix qui démarrerait après coup parlerait sur un texte déjà lu.
+
+La fonction `/api/voix` réimplémente le protocole en JavaScript, le client de
+référence étant en Python. Deux pièges y sont documentés : l'en-tête
+`Sec-MS-GEC`, empreinte d'un horodatage arrondi à cinq minutes concaténé au
+jeton public, et la **version de Chromium annoncée**, que le service valide —
+une version trop ancienne fait échouer la connexion par un 403. À faire
+suivre quand Edge avance.
+
 ### Aucun script en ligne dans le document
 
 La politique de sécurité du contenu refuse `unsafe-inline` pour les scripts.

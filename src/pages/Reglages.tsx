@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { useReglages } from '../contexte.tsx';
 import { SEUILS_PAR_DEFAUT } from '../lib/classification.ts';
 import { oublierToutesLesPhrases } from '../lib/memoirePhrases.ts';
+import { compterRepliquesEnCache, viderCacheVoix } from '../lib/voixAudio.ts';
 
 import { moteursReconnaissance } from '../recognition/index.ts';
 import { ChoixNiveau } from '../ui/ChoixNiveau.tsx';
@@ -28,6 +29,19 @@ import {
 
 export function Reglages({ naviguer }: { naviguer: (v: string) => void }) {
   const [phrasesOubliees, setPhrasesOubliees] = useState(false);
+  const [repliquesEnCache, setRepliquesEnCache] = useState<number | null>(null);
+
+  // Le nombre de répliques conservées est lu une fois : c'est une information
+  // de contexte, pas une valeur à suivre en continu.
+  useEffect(() => {
+    let vivant = true;
+    void compterRepliquesEnCache().then((n) => {
+      if (vivant) setRepliquesEnCache(n);
+    });
+    return () => {
+      vivant = false;
+    };
+  }, []);
   const { reglages, majReglages, reinitialiserReglages, stockageDisponible } = useReglages();
   const [cleVisible, setCleVisible] = useState(false);
   const [cleServeur, setCleServeur] = useState<boolean | null>(null);
@@ -111,6 +125,21 @@ export function Reglages({ naviguer }: { naviguer: (v: string) => void }) {
           <p className="text-xs text-[var(--color-texte-doux)]">
             Les professeurs retiennent les tournures déjà employées, d’une partie à l’autre, pour
             ne pas se répéter. Effacer cette mémoire leur rend toutes leurs formules.
+          </p>
+          <p className="text-xs text-[var(--color-texte-doux)]">
+            Les phrases invariables sont livrées avec l’application. Celles qui citent un coup
+            sont synthétisées une fois puis conservées : {repliquesEnCache ?? '…'} répliques en
+            mémoire sur cet appareil.{' '}
+            <button
+              type="button"
+              className="cible-tactile inline-flex items-center rounded px-2 py-1 underline"
+              onClick={async () => {
+                await viderCacheVoix();
+                setRepliquesEnCache(0);
+              }}
+            >
+              Vider
+            </button>
           </p>
         </div>
       </Carte>

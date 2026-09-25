@@ -43,7 +43,12 @@ export default defineConfig({
         // les premieres prises de parole restaient muettes. Huit fichiers,
         // 130 Ko en tout : le cout est negligeable.
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}', '**/profs/*-bouche-*.webp'],
-        globIgnores: ['**/engine/**', '**/node_modules/**'],
+        // Les voix pré-générées ne sont PAS pré-cachées : une quarantaine de
+        // mégaoctets à la première visite serait absurde alors qu'une partie
+        // n'en consomme qu'une poignée. Elles sont mises en cache à l'usage,
+        // sur des URL immuables — le nom de fichier EST l'empreinte du texte
+        // et de la voix.
+        globIgnores: ['**/engine/**', '**/node_modules/**', '**/voix/**'],
         maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//, /^\/engine\//],
@@ -51,6 +56,19 @@ export default defineConfig({
         clientsClaim: true,
         skipWaiting: false,
         runtimeCaching: [
+          {
+            // Voix des professeurs. Le nom de fichier est l'empreinte du
+            // texte et de la voix : l'URL est donc immuable par construction,
+            // et un fichier mis en cache ne peut jamais être périmé.
+            urlPattern: /\/voix\/.*\.mp3$/,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'voix-professeurs-v1',
+              expiration: { maxEntries: 400, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] },
+              rangeRequests: true,
+            },
+          },
           {
             // Portraits des professeurs, toutes largeurs et pastilles de
             // bouche comprises. Mis en cache a l'usage : cinq largeurs par

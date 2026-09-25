@@ -169,6 +169,66 @@ if (plateau) {
   verifier(moteurRepond, 'Le moteur démarre et la partie avance');
 }
 
+// --- Les voix sont-elles servies et jouables ? ----------------------------
+// Le manifeste est empaqueté dans le bundle : on vérifie plutôt qu'un
+// fichier pré-généré répond, et qu'il est bien du MP3.
+const echantillon = await page.evaluate(async () => {
+  const r = await fetch('/voix/apercu/fr-FR-HenriNeural.mp3');
+  const octets = new Uint8Array(await r.arrayBuffer());
+  return {
+    code: r.status,
+    type: r.headers.get('content-type'),
+    // fff3 / fff2 / ID3 : signatures d'un MP3 valide.
+    signature: [...octets.slice(0, 3)].map((o) => o.toString(16).padStart(2, '0')).join(''),
+    taille: octets.length,
+  };
+});
+verifier(
+  echantillon.code === 200 && /audio\/mpeg/.test(echantillon.type ?? ''),
+  'Les fichiers de voix sont servis en audio/mpeg',
+  `${echantillon.code} · ${echantillon.type} · ${echantillon.taille} o`,
+);
+verifier(
+  /^(fff|id3)/i.test(echantillon.signature),
+  'Le fichier servi est bien du MP3',
+  echantillon.signature,
+);
+
+// La politique doit autoriser la lecture de ces fichiers et des blobs du
+// cache local : `media-src` est le seul point de blocage possible.
+verifier(
+  /media-src[^;]*'self'/.test(csp) && /media-src[^;]*blob:/.test(csp),
+  'La politique autorise la lecture audio, fichiers et blobs',
+);
+
+// --- La synthèse à la demande répond-elle ? -------------------------------
+const synthese = await page.evaluate(async () => {
+  try {
+    const r = await fetch('/api/voix', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        voix: 'fr-FR-HenriNeural',
+        texte: 'Le moment décisif est 17… Cf6, qui coûte 4,2 pions.',
+      }),
+    });
+    const octets = new Uint8Array(await r.arrayBuffer());
+    return {
+      code: r.status,
+      type: r.headers.get('content-type'),
+      taille: octets.length,
+      signature: [...octets.slice(0, 3)].map((o) => o.toString(16).padStart(2, '0')).join(''),
+    };
+  } catch (e) {
+    return { code: 0, erreur: String(e).slice(0, 120) };
+  }
+});
+verifier(
+  synthese.code === 200 && /audio\/mpeg/.test(synthese.type ?? '') && synthese.taille > 1000,
+  'La synthèse à la demande répond en audio',
+  `${synthese.code} · ${synthese.type ?? synthese.erreur} · ${synthese.taille ?? 0} o`,
+);
+
 verifier(erreurs.length === 0, 'Aucune erreur de console', erreurs.slice(0, 2).join(' | ') || 'aucune');
 
 await nav.close();

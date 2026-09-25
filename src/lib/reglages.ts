@@ -82,7 +82,14 @@ export const REGLAGES_PAR_DEFAUT: Reglages = {
   coordonnees: true,
   sons: false,
   voix: true,
-  voixProfesseurs: {},
+  // Attribution choisie à l'écoute des vingt-trois voix. Elle reste
+  // modifiable depuis la page « Les voix des professeurs ».
+  voixProfesseurs: {
+    'homme-ultime': 'fr-FR-HenriNeural',
+    ephraim: 'fr-FR-RemyMultilingualNeural',
+    johana: 'fr-FR-EloiseNeural',
+    serena: 'fr-FR-VivienneMultilingualNeural',
+  },
   animations: true,
   professeur: PROFESSEUR_PAR_DEFAUT,
   niveauEleve: 'intermediaire',
