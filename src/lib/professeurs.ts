@@ -951,3 +951,31 @@ export function issueDe(resultat: string, monCamp: 'w' | 'b', raison: string): I
   if (resultat === '0-1') return monCamp === 'b' ? 'victoire' : 'defaite';
   return 'nulle';
 }
+
+/**
+ * Tous les registres de phrases, réunis pour la pré-génération vocale.
+ *
+ * Ces tables sont privées au module : le générateur de voix ne les voyait
+ * donc pas, et seules les cent quatre-vingt-une phrases du répertoire étaient
+ * pré-générées. Or l'essentiel de ce qu'un professeur dit en cours de partie
+ * vient d'ici. Une seule exportation agrégée suffit, plutôt que d'ouvrir
+ * chaque table et d'élargir l'interface du module.
+ */
+export const REGISTRES_FIGES = {
+  PALIER_POUR_ELEVE,
+  FAUTES,
+  SIMPLE,
+  AVANCE,
+  POURQUOI,
+  PRINCIPE,
+  OUVERTURES,
+  CORRECTION,
+  MENACE,
+  CLOTURES,
+  DIGRESSIONS,
+  OUVERTURES_GRAVES,
+  OUVERTURES_UNIQUE,
+  OUVERTURES_THEORIE,
+  POURQUOI_UNIQUE,
+  ETAT_POSITION,
+};

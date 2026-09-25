@@ -99,30 +99,55 @@ for (const cas of CAS) {
     const r = document.querySelector('cg-board').getBoundingClientRect();
     return { left: r.left, top: r.top, width: r.width };
   });
+  // Le texte d'accueil est relevé AVANT le coup : c'est le seul repère fiable
+  // pour savoir qu'un verdict a remplacé la salutation. Le reconnaître par
+  // une liste de phrases devenait faux dès qu'on enrichissait les registres.
+  const accueil = await page.evaluate(() => {
+    const scene = document.querySelector('.pp-scene');
+    let n = scene?.parentElement ?? null;
+    for (let i = 0; i < 4 && n; i++) {
+      const p = n.querySelector(':scope > p');
+      if (p) return p.textContent?.trim() ?? '';
+      n = n.parentElement;
+    }
+    return '';
+  });
+
   const a = centre(rect, cas.coup[0]);
   const b = centre(rect, cas.coup[1]);
-  await page.mouse.click(a.x, a.y);
-  await page.mouse.click(b.x, b.y);
+  // Glisser plutôt que deux clics : Chessground traite le glisser-déposer
+  // nativement, et la sélection en deux temps se perdait quand un rendu
+  // intervenait entre les deux clics.
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y, { steps: 6 });
+  await page.mouse.up();
 
   // Le commentaire s'écrit caractère par caractère : on attend qu'il cesse
   // de grandir plutôt qu'un délai fixe, sinon on lit une phrase tronquée.
   const texte = await page
     .waitForFunction(
-      () => {
-        const p = [...document.querySelectorAll('p')]
-          .map((x) => x.textContent?.trim() ?? '')
-          .filter((t) => t.length > 40);
-        const courant = p.join(' ');
-        // La salutation d'accueil ne compte pas : tant qu'elle est encore
-        // affichée, aucun verdict n'a été rendu et on lirait le mauvais
-        // texte — c'est ce qui faisait passer un cas pour un échec de ton.
-        if (/À vous de jouer|Installez-vous|Asseyez-vous|Bonjour|Bonsoir/.test(courant) && courant.length < 320)
-          return false;
-        if (courant === window.__dernier && courant.length > 60) return courant;
+      (accueil) => {
+        const scene = document.querySelector('.pp-scene');
+        let n = scene?.parentElement ?? null;
+        let courant = '';
+        for (let i = 0; i < 4 && n; i++) {
+          const p = n.querySelector(':scope > p');
+          if (p) {
+            courant = p.textContent?.trim() ?? '';
+            break;
+          }
+          n = n.parentElement;
+        }
+        // Tant que le texte est celui de l'accueil, aucun verdict n'a été
+        // rendu : on lirait la mauvaise réplique.
+        if (courant === accueil || courant.length < 60) return false;
+        if (courant === window.__dernier) return courant;
         window.__dernier = courant;
         return false;
       },
       { timeout: 120000, polling: 1200 },
+      accueil,
     )
     .then((h) => h.jsonValue())
     .catch(() => '');

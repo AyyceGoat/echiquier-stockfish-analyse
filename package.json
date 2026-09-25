@@ -44,7 +44,8 @@
     "chessground": "^9.2.1",
     "idb": "^8.0.3",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "ws": "^8.21.3"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",

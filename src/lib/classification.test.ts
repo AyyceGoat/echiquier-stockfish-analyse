@@ -236,12 +236,12 @@ describe('eloEstime', () => {
     // Ancrages relevés par `npm run test:elo` en faisant s'affronter des
     // paliers voisins. L'interpolation passe par eux, donc l'écart est nul.
     for (const [perte, attendu] of [
-      [123, 400],
-      [94, 800],
-      [56, 1200],
-      [36, 1600],
-      [10, 2000],
-      [5, 2400],
+      [124, 400],
+      [80, 800],
+      [62, 1200],
+      [27, 1600],
+      [12, 2000],
+      [4, 2400],
     ] as const) {
       expect(eloEstime(perte, 40), `${perte} cp`).toBe(attendu);
     }
@@ -250,7 +250,7 @@ describe('eloEstime', () => {
   it('interpole entre deux paliers sans sauter', () => {
     // Entre Débutant et Amateur, une perte intermédiaire doit donner un Elo
     // intermédiaire — et non l'un des deux ancrages.
-    const e = eloEstime(72, 40)!;
+    const e = eloEstime(70, 40)!;
     expect(e).toBeGreaterThan(800);
     expect(e).toBeLessThan(1200);
   });

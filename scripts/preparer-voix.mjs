@@ -53,6 +53,33 @@ export const VOIX_FRANCAISES = [
 ];
 
 /**
+ * Voix multilingues, capables de parler français sans être françaises.
+ *
+ * Les deux meilleures voix françaises — Rémy et Vivienne — sont justement de
+ * ce type. Microsoft en propose dix autres, entraînées sur plusieurs langues
+ * et qui prononcent le français correctement. Les quatre de Copilot
+ * (Andrew, Ava, Brian, Emma) sont les plus récentes du service.
+ *
+ * Leur langue d'origine n'est pas leur limite : c'est le timbre qui les
+ * distingue, et c'est lui qu'on vient chercher.
+ */
+export const VOIX_MULTILINGUES = [
+  { id: 'en-US-AndrewMultilingualNeural', libelle: 'Andrew', pays: 'Multilingue', genre: 'Homme' },
+  { id: 'en-US-BrianMultilingualNeural', libelle: 'Brian', pays: 'Multilingue', genre: 'Homme' },
+  { id: 'en-US-AvaMultilingualNeural', libelle: 'Ava', pays: 'Multilingue', genre: 'Femme' },
+  { id: 'en-US-EmmaMultilingualNeural', libelle: 'Emma', pays: 'Multilingue', genre: 'Femme' },
+  { id: 'en-AU-WilliamMultilingualNeural', libelle: 'William', pays: 'Multilingue', genre: 'Homme' },
+  { id: 'de-DE-FlorianMultilingualNeural', libelle: 'Florian', pays: 'Multilingue', genre: 'Homme' },
+  { id: 'de-DE-SeraphinaMultilingualNeural', libelle: 'Seraphina', pays: 'Multilingue', genre: 'Femme' },
+  { id: 'it-IT-GiuseppeMultilingualNeural', libelle: 'Giuseppe', pays: 'Multilingue', genre: 'Homme' },
+  { id: 'ko-KR-HyunsuMultilingualNeural', libelle: 'Hyunsu', pays: 'Multilingue', genre: 'Homme' },
+  { id: 'pt-BR-ThalitaMultilingualNeural', libelle: 'Thalita', pays: 'Multilingue', genre: 'Femme' },
+];
+
+/** Toutes les voix proposées à l'écoute. */
+export const TOUTES_LES_VOIX = [...VOIX_FRANCAISES, ...VOIX_MULTILINGUES];
+
+/**
  * Empreinte d'une réplique : voix, débit, hauteur et texte.
  *
  * C'est la clé du cache. Deux professeurs qui disent la même phrase avec des
@@ -100,14 +127,14 @@ async function apercu() {
   const dossier = 'public/voix/apercu';
   mkdirSync(dossier, { recursive: true });
   const index = [];
-  for (const v of VOIX_FRANCAISES) {
+  for (const v of TOUTES_LES_VOIX) {
     const fichier = `${dossier}/${v.id}.mp3`;
     process.stdout.write(`  ${v.libelle.padEnd(10)} ${v.id.padEnd(34)}`);
     try {
       const { genere } = await synthetiser(v.id, PHRASE_APERCU, fichier);
       const poids = readFileSync(fichier).length;
       console.log(`${genere ? 'généré' : 'déjà là'}  ${(poids / 1024).toFixed(0)} Ko`);
-      index.push({ ...v, fichier: `/voix/apercu/${v.id}.mp3` });
+      index.push({ ...v, multilingue: v.pays === 'Multilingue', fichier: `/voix/apercu/${v.id}.mp3` });
     } catch (e) {
       console.log(`ÉCHEC — ${String(e?.message ?? e).slice(0, 80)}`);
     }
