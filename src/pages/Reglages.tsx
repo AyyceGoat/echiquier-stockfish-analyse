@@ -11,7 +11,7 @@ import { useEffect, useState } from 'react';
 import { useReglages } from '../contexte.tsx';
 import { SEUILS_PAR_DEFAUT } from '../lib/classification.ts';
 import { oublierToutesLesPhrases } from '../lib/memoirePhrases.ts';
-import { taire } from '../lib/voix.ts';
+
 import { moteursReconnaissance } from '../recognition/index.ts';
 import { ChoixNiveau } from '../ui/ChoixNiveau.tsx';
 import {
@@ -90,18 +90,13 @@ export function Reglages({ naviguer }: { naviguer: (v: string) => void }) {
           />
           <Interrupteur
             libelle="Le professeur parle à voix haute"
-            description="La voix vient de votre appareil : gratuite et hors ligne, mais son naturel varie beaucoup d’un système à l’autre."
+            description="Voix neuronales. Tant qu’aucune voix n’est attribuée à un professeur, il reste silencieux."
             actif={reglages.voix}
-            onChange={(v) => {
-              majReglages({ voix: v });
-              // Couper le réglage doit faire taire immédiatement ce qui est
-              // en cours, pas seulement la réplique suivante.
-              if (!v) taire();
-            }}
+            onChange={(v) => majReglages({ voix: v })}
           />
           <div className="flex flex-wrap gap-2">
             <Bouton variante="discret" onClick={() => naviguer('/voix')}>
-              Écouter les quatre voix
+              Écouter et attribuer les voix
             </Bouton>
             <Bouton
               variante="discret"

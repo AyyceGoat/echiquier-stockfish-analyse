@@ -52,7 +52,7 @@ import {
   type CoupMarquant,
 } from '../lib/professeurs.ts';
 import { ouvrirMemoire, retenirMemoire } from '../lib/memoirePhrases.ts';
-import { debloquerVoix, dire, taire } from '../lib/voix.ts';
+import { repliquesAudio } from '../lib/voixAudio.ts';
 import {
   AffichageEval,
   Alerte,
@@ -504,32 +504,42 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
   /**
    * Voix du professeur, lancée en même temps que la frappe.
    *
-   * On ne découpe pas la parole en morceaux pour la caler sur les
-   * caractères : la synthèse gère elle-même son rythme, et la frappe est
-   * réglée pour durer à peu près autant. Les deux commencent ensemble, ce
-   * qui suffit à ce que la bouche, le texte et le son aillent de pair.
+   * La synthèse du navigateur a été retirée. Elle était mécanique, et surtout
+   * elle n'offre en pratique qu'une voix par genre : les quatre professeurs
+   * sonnaient comme deux personnes parlant à des vitesses différentes. On lit
+   * désormais des fichiers pré-générés avec des voix neuronales distinctes.
    *
-   * La coupure est immédiate quand le commentaire change : deux répliques
-   * qui se chevauchent seraient incompréhensibles.
+   * Quand l'audio n'est pas disponible — voix non encore attribuée, phrase
+   * jamais synthétisée, réseau absent — le professeur reste SILENCIEUX. Le
+   * repli sur la voix du navigateur est un choix explicite contre lequel il a
+   * été tranché : mieux vaut rien qu'une voix désagréable.
    */
   useEffect(() => {
     if (!reglages.voix || commentaire.length === 0) return;
-    dire({ idProfesseur: prof.id, texte: commentaire });
-    return () => taire();
-  }, [commentaire, reglages.voix, prof.id]);
-
-  // La synthèse vocale reste bloquée tant que l'utilisateur n'a rien touché :
-  // on saisit la première interaction de l'écran pour lever le verrou.
-  useEffect(() => {
-    if (!reglages.voix) return;
-    const lever = () => debloquerVoix();
-    window.addEventListener('pointerdown', lever, { once: true });
-    window.addEventListener('keydown', lever, { once: true });
+    const voix = reglages.voixProfesseurs?.[prof.id];
+    if (!voix) return;
+    let vivant = true;
+    let lecteur: HTMLAudioElement | null = null;
+    // Les phrases s'enchaînent : le commentaire est assemblé à partir de
+    // fragments qui sont chacun une phrase complète, et c'est à cette échelle
+    // que l'audio est pré-généré.
+    void repliquesAudio(voix, commentaire).then(async (urls) => {
+      for (const url of urls) {
+        if (!vivant) return;
+        if (!url) continue;
+        await new Promise<void>((fini) => {
+          lecteur = new Audio(url);
+          lecteur.onended = () => fini();
+          lecteur.onerror = () => fini();
+          void lecteur.play().catch(() => fini());
+        });
+      }
+    });
     return () => {
-      window.removeEventListener('pointerdown', lever);
-      window.removeEventListener('keydown', lever);
+      vivant = false;
+      lecteur?.pause();
     };
-  }, [reglages.voix]);
+  }, [commentaire, reglages.voix, reglages.voixProfesseurs, prof.id]);
 
   const reprendreLeCoup = useCallback(() => {
     // Si le moteur a malgré tout déjà répondu, on remonte jusqu'à rendre
