@@ -290,6 +290,32 @@ La clé n'est jamais incluse dans le bundle client.
 - Table de hachage réglée dynamiquement : 16 Mo sur iOS (au-delà, Safari fait
   recharger l'onglet), 32 Mo sur les autres mobiles, 128 Mo sur ordinateur.
 
+### Aucun script en ligne dans le document
+
+La politique de sécurité du contenu refuse `unsafe-inline` pour les scripts.
+Les deux scripts qui vivaient dans `index.html` — application du thème avant
+la première peinture, et pilote de l'écran de lancement — sont donc des
+fichiers servis depuis la même origine, `public/theme.js` et
+`public/lancement.js`.
+
+Ce n'est pas un détail de style : tant qu'ils étaient en ligne, ils étaient
+**silencieusement bloqués en production**. `window.__lancement` n'existait
+pas, l'application appelait `terminer()` dans le vide, et l'écran de
+lancement restait sur « Préparation… » indéfiniment. Rien de tout cela
+n'apparaissait en développement, où ces en-têtes ne sont pas servis.
+
+Deux règles en découlent :
+
+- **le garde-fou de l'écran de lancement est en CSS**, pas en JavaScript. Un
+  garde-fou écrit en JavaScript ne sert à rien précisément quand le
+  JavaScript ne s'exécute pas. Une animation retardée de vingt secondes et
+  figée sur son état final retire l'écran sans qu'aucun script intervienne ;
+- **`npm run test:deploye <url>` vérifie la réponse réelle** : en-têtes
+  servis, violations de politique, disparition effective de l'écran de
+  lancement, isolation multi-origine, et une partie jouée pour prouver que le
+  moteur WebAssembly démarre sous cette politique. À lancer après chaque
+  déploiement.
+
 ### Précision et Elo estimé : nos chiffres ne sont pas ceux de Lichess
 
 **Ne cherchez pas à comparer ces pourcentages avec ceux de Lichess ou de

@@ -59,6 +59,32 @@
         -webkit-font-smoothing: antialiased;
       }
       /* Sortie : opacité et échelle seulement, donc composées par le GPU. */
+      /*
+       * Garde-fou, en CSS et non en JavaScript.
+       *
+       * Le garde-fou précédent était un `setTimeout` dans le script de
+       * lancement. Or c'est précisément quand ce script ne s'exécute pas —
+       * bloqué par la politique de sécurité, erreur de chargement, réseau
+       * coupé au mauvais moment — que le garde-fou doit agir. Il ne servait
+       * donc à rien dans le seul cas qui compte : l'écran est resté figé sur
+       * « Préparation… » indéfiniment.
+       *
+       * Une animation d'une durée nulle, retardée de vingt secondes et figée
+       * sur son état final, retire l'écran sans qu'aucun script intervienne.
+       * Le script, lui, retire le nœud bien avant quand tout va bien.
+       */
+      @keyframes lancement-secours {
+        to {
+          opacity: 0;
+          visibility: hidden;
+          pointer-events: none;
+        }
+      }
+
+      #lancement {
+        animation: lancement-secours 400ms linear 20s forwards;
+      }
+
       #lancement.lc-sort {
         opacity: 0;
         transform: scale(1.04);
@@ -204,9 +230,10 @@
 
       @media (prefers-reduced-motion: reduce) {
         #lancement *,
+        /* Le garde-fou garde son délai : le réduire ferait disparaître
+           l'écran de lancement aussitôt affiché. */
         #lancement {
-          animation-duration: 0.01ms !important;
-          animation-delay: 0ms !important;
+          animation: lancement-secours 0.01ms linear 20s forwards !important;
           transition-duration: 0.01ms !important;
         }
         .lc-col { transform: scaleY(1); }
@@ -220,28 +247,7 @@
       sombre pendant quelques centaines de millisecondes. Ce script est
       volontairement en clair dans le document, synchrone et minuscule.
     -->
-    <script>
-      (function () {
-        try {
-          var brut = localStorage.getItem('echiquier.reglages.v1');
-          var theme = brut ? JSON.parse(brut).theme : 'sombre';
-          var resolu =
-            theme === 'systeme'
-              ? matchMedia('(prefers-color-scheme: light)').matches
-                ? 'clair'
-                : 'sombre'
-              : theme === 'clair'
-                ? 'clair'
-                : 'sombre';
-          document.documentElement.dataset.theme = resolu;
-          document
-            .querySelector('meta[name="theme-color"]')
-            .setAttribute('content', resolu === 'clair' ? '#f4efe6' : '#14120f');
-        } catch (e) {
-          /* Stockage bloqué : on reste sur le thème sombre du document. */
-        }
-      })();
-    </script>
+    <script src="/theme.js"></script>
   </head>
   <body>
     <!--
@@ -301,57 +307,7 @@
       le garde-fou de 20 secondes, qui affiche une issue plutôt que de
       laisser un visiteur devant une marque immobile.
     -->
-    <script>
-      (function () {
-        var racine = document.getElementById('lancement');
-        var barre = document.getElementById('lancement-barre');
-        var etape = document.getElementById('lancement-etape');
-        if (!racine) return;
-
-        var part = 0.04;
-        var debut = Date.now();
-        /** Durée minimale d'affichage : en dessous, l'écran clignote. */
-        var MINIMUM = 900;
-
-        function avancer(valeur, texte) {
-          // Monotone : une jauge qui recule est pire que pas de jauge.
-          part = Math.max(part, Math.min(1, valeur));
-          if (barre) barre.style.transform = 'scaleX(' + part + ')';
-          if (texte && etape) etape.textContent = texte;
-        }
-
-        function terminer() {
-          avancer(1, 'Prêt');
-          var reste = Math.max(0, MINIMUM - (Date.now() - debut));
-          setTimeout(function () {
-            racine.classList.add('lc-sort');
-            // On retire le nœud après la transition : le laisser en place
-            // garderait un calque plein écran au-dessus de l'application.
-            setTimeout(function () {
-              if (racine && racine.parentNode) racine.parentNode.removeChild(racine);
-            }, 600);
-          }, reste);
-        }
-
-        window.__lancement = { avancer: avancer, terminer: terminer };
-
-        // Garde-fou : si l'application ne se signale jamais, on sort quand
-        // même et on laisse le visiteur voir ce qu'il y a derrière.
-        setTimeout(function () {
-          if (document.getElementById('lancement')) {
-            if (etape) etape.textContent = 'Le chargement prend plus de temps que prévu…';
-            terminer();
-          }
-        }, 20000);
-
-        // Progression fine pendant le téléchargement du bundle : on ne sait
-        // pas encore ce qu'il reste, mais on sait que ça avance.
-        var faux = setInterval(function () {
-          if (part >= 0.6) return clearInterval(faux);
-          avancer(part + 0.035);
-        }, 180);
-      })();
-    </script>
+    <script src="/lancement.js"></script>
 
     <script type="module" src="/src/main.tsx"></script>
   </body>
