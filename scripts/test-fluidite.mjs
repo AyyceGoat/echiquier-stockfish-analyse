@@ -43,19 +43,38 @@ const lireCommentaire = () =>
 const depart = Date.now();
 await page.goto(`${BASE}/#/assiste`, { waitUntil: 'domcontentloaded', timeout: 60000 });
 
-// --- 10. Les portraits sont-ils là tout de suite ? ------------------------
-const portraits = await page
-  .waitForFunction(() => document.querySelectorAll('.pp-image').length >= 4, {
-    timeout: 30000,
-    polling: 100,
+// --- 10. Les portraits sont-ils là dès que la liste s'affiche ? -----------
+//
+// On mesure l'écart entre l'apparition de la LISTE et celle des visages, et
+// non le temps de chargement de l'application. Sur le déploiement, ce dernier
+// est dominé par le téléchargement du bundle, ce qui masquait la question
+// posée : les portraits arrivent-ils après coup ?
+const listeVue = await page
+  .waitForFunction(() => document.querySelectorAll('.pp-scene').length >= 4, {
+    timeout: 60000,
+    polling: 80,
   })
-  .then(() => Date.now() - depart)
+  .then(() => Date.now())
   .catch(() => null);
+
+const visagesVus = await page
+  .waitForFunction(
+    () =>
+      [...document.querySelectorAll('.pp-image')].filter(
+        (i) => i.complete && i.naturalWidth > 0,
+      ).length >= 4,
+    { timeout: 60000, polling: 80 },
+  )
+  .then(() => Date.now())
+  .catch(() => null);
+
+const retardVisages = listeVue !== null && visagesVus !== null ? visagesVus - listeVue : null;
 verifier(
-  portraits !== null && portraits < 4000,
-  'Les portraits des professeurs sont là rapidement',
-  portraits === null ? 'jamais' : `${portraits} ms`,
+  retardVisages !== null && retardVisages < 1200,
+  'Les visages apparaissent avec la liste, pas après',
+  retardVisages === null ? 'jamais' : `${retardVisages} ms après la liste`,
 );
+console.log(`       (liste affichée ${listeVue === null ? '—' : listeVue - depart} ms après l'ouverture)`);
 
 await page.waitForFunction(
   () => [...document.querySelectorAll('button')].some((b) => b.textContent?.trim() === 'Jouer les blancs'),
