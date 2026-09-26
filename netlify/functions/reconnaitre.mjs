@@ -16,7 +16,17 @@ import Anthropic from '@anthropic-ai/sdk';
 
 export const config = { path: '/api/reconnaitre' };
 
-const MODELE = 'claude-opus-5';
+/**
+ * Modèle de lecture, réglable sans redéploiement.
+ *
+ * `claude-opus-5` reste le choix par défaut : lire une position est une
+ * tâche de perception où une erreur coûte cher — une pièce mal placée fausse
+ * toute l'analyse qui suit. `claude-haiku-4-5-20251001` répond nettement plus
+ * vite et constitue le levier suivant si la durée restait trop longue après
+ * la réduction de la sortie ; il se règle par la variable d'environnement,
+ * sans toucher au code.
+ */
+const MODELE = process.env.MODELE_RECONNAISSANCE || 'claude-opus-5';
 
 // Effort « low » : la lecture d'un échiquier est une tâche de perception,
 // pas de raisonnement. C'est aussi ce qui garde la réponse sous la limite
@@ -28,26 +38,42 @@ const EFFORT = 'low';
 // 8x8 est donc imposée par la consigne, puis VÉRIFIÉE deux fois — ici par
 // `normaliserPlateau` côté client, et par la validation de FEN avant tout
 // affichage. Une contrainte de schéma en plus n'aurait rien garanti de mieux.
+/**
+ * Schéma de sortie, réduit au strict nécessaire.
+ *
+ * Le schéma précédent demandait deux tableaux 8 x 8 : soixante-quatre chaînes
+ * entre guillemets, puis soixante-quatre nombres. C'est ce qui coûtait le plus
+ * cher — la durée d'une génération est d'abord proportionnelle à ce qu'on lui
+ * fait écrire, et la lecture prenait une à deux minutes.
+ *
+ * On demande désormais :
+ *
+ *   - le placement sur UNE ligne, dans la forme utilisée par les FEN
+ *     (« rnbqkbnr/pppppppp/8/... »), soit une soixantaine de caractères au
+ *     lieu de plusieurs centaines ;
+ *   - les seules cases douteuses, au lieu d'une confiance pour les
+ *     soixante-quatre. En pratique il y en a zéro à cinq.
+ *
+ * Le reste est inchangé : la forme 8 x 8 est reconstruite ici et validée
+ * deux fois, comme avant.
+ */
 const SCHEMA = {
   type: 'object',
   properties: {
-    plateau: {
+    placement: {
+      type: 'string',
+      description:
+        'Les 8 rangées séparées par « / », de celle du HAUT de l’image à celle du BAS. ' +
+        'Dans chaque rangée, de GAUCHE à DROITE : une lettre par pièce (majuscule = blanche, ' +
+        'minuscule = noire) et un chiffre pour compter les cases vides consécutives. ' +
+        'Exemple : rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR',
+    },
+    douteuses: {
       type: 'array',
       description:
-        'Les 8 rangées, de celle du HAUT de l’image à celle du BAS, chacune de 8 cases, de gauche à droite.',
-      items: {
-        type: 'array',
-        items: {
-          type: 'string',
-          description:
-            'Symbole FEN : majuscule pour une pièce blanche (P N B R Q K), minuscule pour une pièce noire (p n b r q k), chaîne vide pour une case vide.',
-        },
-      },
-    },
-    confiances: {
-      type: 'array',
-      description: 'Confiance entre 0 et 1 pour chaque case, même disposition que « plateau ».',
-      items: { type: 'array', items: { type: 'number' } },
+        'Uniquement les cases dont vous n’êtes pas sûr : « rangée,colonne » comptées depuis ' +
+        'le haut et la gauche de l’image, à partir de 0. Laissez vide si tout est net.',
+      items: { type: 'string' },
     },
     orientation: {
       type: 'string',
@@ -56,9 +82,44 @@ const SCHEMA = {
     trait: { type: 'string', enum: ['w', 'b', 'inconnu'] },
     remarques: { type: 'array', items: { type: 'string' } },
   },
-  required: ['plateau', 'confiances', 'orientation', 'trait', 'remarques'],
+  required: ['placement', 'douteuses', 'orientation', 'trait', 'remarques'],
   additionalProperties: false,
 };
+
+/**
+ * Reconstruit le tableau 8 x 8 et les confiances à partir de la réponse.
+ *
+ * Le modèle n'écrit plus que le placement et les cases douteuses : la forme
+ * attendue par le reste de l'application est rebâtie ici, et toute rangée
+ * malformée laisse des cases vides plutôt que de faire échouer la lecture.
+ */
+function deplierPlacement(placement, douteuses) {
+  const plateau = Array.from({ length: 8 }, () => Array.from({ length: 8 }, () => ''));
+  const rangees = String(placement ?? '').split('/');
+  for (let r = 0; r < 8; r++) {
+    let c = 0;
+    for (const ch of rangees[r] ?? '') {
+      if (c >= 8) break;
+      if (ch >= '1' && ch <= '8') {
+        c += Number(ch);
+      } else if ('pnbrqkPNBRQK'.includes(ch)) {
+        plateau[r][c] = ch;
+        c += 1;
+      }
+    }
+  }
+
+  const confiances = Array.from({ length: 8 }, () => Array.from({ length: 8 }, () => 0.95));
+  for (const brut of douteuses ?? []) {
+    const [r, c] = String(brut)
+      .split(/[,; ]+/)
+      .map((n) => Number(n));
+    if (Number.isInteger(r) && Number.isInteger(c) && r >= 0 && r < 8 && c >= 0 && c < 8) {
+      confiances[r][c] = 0.3;
+    }
+  }
+  return { plateau, confiances };
+}
 
 const CONSIGNE = `Tu lis une position d'échecs sur une image et tu la transcris case par case.
 
@@ -67,12 +128,12 @@ MÉTHODE, à suivre dans l'ordre :
 2. Si la photo est prise de biais, corrige mentalement la perspective avant de lire les cases.
 3. Détermine l'orientation : « blancs-en-bas » si le camp blanc occupe le bas de l'image, « noirs-en-bas » sinon. Les coordonnées imprimées sur l'échiquier, la position des rois et le sens des pièces sont les meilleurs indices.
 4. Lis les 64 cases. La première rangée du tableau est celle du HAUT DE L'IMAGE, la première case de chaque rangée est celle de GAUCHE DE L'IMAGE. Ne réordonne rien : l'orientation est déclarée séparément.
-5. Attribue une confiance à chaque case. Sois honnête : une case masquée, floue, à contre-jour ou dont la pièce est ambiguë doit recevoir une confiance basse (< 0,5). Une case manifestement vide et nette mérite une confiance élevée.
+5. Signale dans « douteuses » les SEULES cases dont tu n'es pas sûr — masquées, floues, à contre-jour, pièce ambiguë. S'il n'y en a aucune, laisse la liste vide. N'y mets pas les cases nettes.
 6. Si tu distingues à qui est le trait (pendule, surbrillance du dernier coup), indique-le ; sinon « inconnu ».
 
 RÈGLES STRICTES :
-- « plateau » contient EXACTEMENT 8 rangées, chacune de EXACTEMENT 8 cases. « confiances » a exactement la même forme. Une réponse qui ne respecte pas ces tailles est inutilisable.
-- Case vide = chaîne vide, jamais un point ni un espace.
+- « placement » contient EXACTEMENT 8 rangées séparées par « / », et chaque rangée totalise EXACTEMENT 8 cases une fois les chiffres développés.
+- Les cases vides se comptent : « 8 » pour une rangée vide, « r6k » pour une tour, six cases vides, un roi.
 - Pièce blanche en MAJUSCULE, pièce noire en minuscule, selon la couleur réelle des pièces et non leur position sur l'image.
 - Un échiquier a au plus un roi de chaque couleur. Si tu hésites entre un roi et une dame, choisis et baisse la confiance.
 - N'invente aucune pièce : une case dont tu ne vois pas le contenu est vide avec une confiance basse.
@@ -189,7 +250,10 @@ export default async function handler(req) {
   try {
     const reponse = await client.messages.create({
       model: MODELE,
-      max_tokens: 8000,
+      // Le placement tient en une soixantaine de caractères et les remarques
+      // en quelques phrases : huit mille jetons étaient une invitation à
+      // écrire, et la durée d'une génération suit ce qu'on lui fait écrire.
+      max_tokens: 700,
       output_config: {
         effort: EFFORT,
         format: { type: 'json_schema', schema: SCHEMA },
@@ -233,9 +297,10 @@ export default async function handler(req) {
       return erreur('La réponse du modèle est illisible.', 'Réessayez.', 502);
     }
 
+    const { plateau, confiances } = deplierPlacement(donnees.placement, donnees.douteuses);
     return reponseJson({
-      plateau: donnees.plateau,
-      confiances: donnees.confiances,
+      plateau,
+      confiances,
       orientation: donnees.orientation,
       trait: donnees.trait === 'w' || donnees.trait === 'b' ? donnees.trait : undefined,
       remarques: Array.isArray(donnees.remarques) ? donnees.remarques : [],

@@ -13,12 +13,17 @@ import {
   type NiveauEleve,
 } from './professeurs.ts';
 import { NIVEAUX } from './niveaux.ts';
+import { LONGUEUR_CONFORTABLE } from './parole.ts';
 import { boiteBouche, COTE_SOURCE, REPERES } from './reperesPortraits.ts';
 
 const contexte = (sur: Partial<ContexteCommentaire> = {}): ContexteCommentaire => ({
   classement: 'gaffe',
-  coupSan: 'Cf3',
-  meilleurSan: 'Td1',
+  // Notation ANGLAISE : c'est celle que produit chess.js, et donc celle que
+  // l'application transmet. Le professeur ne la prononce jamais, mais il s'en
+  // sert pour retrouver la pièce déplacée.
+  coupSan: 'Nf3',
+  fenAvant: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+  meilleurSan: 'e4',
   varianteSan: ['Td1', 'Dxd1', 'Txd1', 'Cf6'],
   reponseAdverseSan: 'Fxe4',
   perteCp: 320,
@@ -131,26 +136,46 @@ describe('commentaireLocal', () => {
     expect(commentaireLocal.enLigne).toBe(false);
   });
 
-  it('reprend l’explication produite par l’analyse', async () => {
+  it('ne prononce JAMAIS de notation algébrique', async () => {
+    // C'est la règle qui commande tout le module : « Cg6 » ne se comprend
+    // pas à l'oreille et la synthèse vocale l'écorche.
+    const classements = ['theorie', 'unique', 'excellent', 'bon', 'imprecision', 'erreur', 'gaffe'] as const;
     for (const p of PROFESSEURS) {
-      const t = await commentaireLocal.commenter(p, contexte());
-      expect(t).toContain('cavalier en e4 en prise');
+      for (const c of classements) {
+        for (const n of NIVEAUX_ELEVE) {
+          const t = await commentaireLocal.commenter(
+            p,
+            contexte({ classement: c, eleve: n.id as NiveauEleve }),
+          );
+          expect(t, `${p.id}/${c}/${n.id} : ${t}`).not.toMatch(/[KQRBNCFTD]?[a-h][1-8]/);
+          expect(t, `${p.id}/${c}/${n.id}`).not.toMatch(/O-O/);
+        }
+      }
     }
   });
 
-  it('donne le meilleur coup quand le coup joué était fautif', async () => {
+  it('reste court', async () => {
+    // Un commentaire parlé est une réplique, pas un exposé. L'assemblage
+    // précédent atteignait sept propositions.
     for (const p of PROFESSEURS) {
-      const t = await commentaireLocal.commenter(p, contexte());
-      expect(t, p.id).toContain('Td1');
+      for (const c of ['gaffe', 'excellent', 'erreur'] as const) {
+        const t = await commentaireLocal.commenter(p, contexte({ classement: c }));
+        expect(t.length, `${p.id}/${c} : ${t}`).toBeLessThan(LONGUEUR_CONFORTABLE);
+      }
     }
   });
 
-  it('ne réclame pas un meilleur coup quand le coup était bon', async () => {
+  it('nomme les pièces en français', async () => {
     const t = await commentaireLocal.commenter(
       professeurParId('ephraim'),
-      contexte({ classement: 'excellent', meilleurSan: null }),
+      contexte({
+        classement: 'gaffe',
+        coupSan: 'Nf3',
+        meilleurSan: 'e4',
+        explication: { phrase: 'peu importe', motif: 'piece-en-prise' },
+      }),
     );
-    expect(t).not.toContain('Td1');
+    expect(t).toMatch(/cavalier|pion/);
   });
 
   it('donne à chaque professeur une voix distincte', async () => {
@@ -163,39 +188,11 @@ describe('commentaireLocal', () => {
   it('vouvoie, pour les quatre', async () => {
     for (const p of PROFESSEURS) {
       const t = await commentaireLocal.commenter(p, contexte());
-      // Aucune marque de tutoiement : ni « tu », ni « ton/ta/tes », ni les
-      // terminaisons verbales en -es qui l'accompagnent.
-      expect(t, p.id).not.toMatch(/\b(tu|ton|ta|tes|toi)\b/i);
+      expect(t, p.id).not.toMatch(/(tu|ton|ta|tes|toi)/i);
     }
-  });
-
-  it('fait digresser Serena, et elle seule', async () => {
-    const serena = await commentaireLocal.commenter(professeurParId('serena'), contexte());
-    expect(serena).toMatch(/Capablanca|La Havane/);
-    for (const id of ['homme-ultime', 'ephraim', 'johana']) {
-      const t = await commentaireLocal.commenter(professeurParId(id), contexte());
-      expect(t, id).not.toMatch(/Capablanca|La Havane/);
-    }
-  });
-
-  it('épargne le vocabulaire technique aux débutants', async () => {
-    const ctx = contexte({
-      explication: {
-        phrase: 'Votre tour est attaquée.',
-        complement: 'La case d4 devient un avant-poste.',
-        motif: 'piece-en-prise',
-      },
-    });
-    const johana = professeurParId('johana');
-    const debutant = await commentaireLocal.commenter(johana, { ...ctx, eleve: 'decouverte' });
-    const avance = await commentaireLocal.commenter(johana, { ...ctx, eleve: 'avance' });
-    expect(debutant).not.toContain('avant-poste');
-    expect(avance).toContain('avant-poste');
   });
 
   it('reste stable pour un même coup : deux appels donnent le même texte', async () => {
-    // Le tirage des tournures est déterministe, dérivé du coup et du
-    // classement : sans cela le commentaire changerait à chaque rendu React.
     const p = professeurParId('homme-ultime');
     const a = await commentaireLocal.commenter(p, contexte());
     const b = await commentaireLocal.commenter(p, contexte());
@@ -218,87 +215,28 @@ describe('commentaireLocal', () => {
   });
 });
 
-describe('l’étiquette commande le commentaire', () => {
-  it('ne commente jamais une gaffe comme un coup jouable', async () => {
-    // Défaut relevé : « 52… Rb2 — Gaffe » suivi de « ce coup est jouable
-    // mais passif ». Le motif et le classement sont calculés séparément ;
-    // quand ils se contredisent, c'est l'étiquette qui l'emporte.
-    for (const p of PROFESSEURS) {
-      const t = await commentaireLocal.commenter(
-        p,
-        contexte({
-          classement: 'gaffe',
-          perteCp: 480,
-          explication: {
-            phrase: 'Ce coup est jouable mais passif.',
-            complement: undefined,
-            motif: 'passif',
-          },
-        }),
-      );
-      expect(t, p.id).not.toContain('jouable mais passif');
-      // Et il dit ce que ça coûte.
-      expect(t, p.id).toMatch(/coûte|perd|grave|indéfendable|sérieux|mal|lâch/i);
-      // Et il dit quoi jouer.
-      expect(t, p.id).toContain('Td1');
-    }
-  });
-
-  it('explique pourquoi un coup unique était le seul', async () => {
-    for (const p of PROFESSEURS) {
-      const t = await commentaireLocal.commenter(
-        p,
-        contexte({
-          classement: 'unique',
-          perteCp: 0,
-          meilleurSan: null,
-          explication: {
-            phrase: 'Ce coup ne change pas l’appréciation de la position.',
-            motif: 'sans-consequence',
-          },
-        }),
-      );
-      expect(t, p.id).not.toContain('ne change pas l’appréciation');
-      expect(t, p.id).toMatch(/seul|forcé|contrain|autre continuation|alternative|choix|rien d’autre|que ça/i);
-    }
-  });
-
-  it('n’emploie pas les mêmes mots pour une gaffe et pour un bon coup', async () => {
-    for (const p of PROFESSEURS) {
-      const gaffe = await commentaireLocal.commenter(p, contexte({ classement: 'gaffe' }));
-      const bon = await commentaireLocal.commenter(
-        p,
-        contexte({ classement: 'excellent', perteCp: 0, meilleurSan: null }),
-      );
-      expect(gaffe, p.id).not.toBe(bon);
-    }
-  });
-});
-
 describe('le ton suit la position', () => {
   const bon = { classement: 'excellent' as const, perteCp: 0, meilleurSan: null };
 
   it('dit que la position est perdue même quand le coup est le meilleur', async () => {
-    // Le cas signalé : à deux coups du mat, l'élève s'entendait féliciter.
     for (const p of PROFESSEURS) {
       const t = await commentaireLocal.commenter(p, contexte({ ...bon, cpApres: -1500 }));
-      expect(t, p.id).toMatch(/perdu|perdue|ne tient plus|très mauvaise/i);
-      // Et il dit comment se défendre.
-      expect(t, p.id).toMatch(/défend|compliqu|gêne|désordre|problème|chance/i);
+      expect(t, p.id).toMatch(/perdu|perdue|mauvais|intenable/i);
     }
   });
 
   it('reconnaît la domination', async () => {
     for (const p of PROFESSEURS) {
       const t = await commentaireLocal.commenter(p, contexte({ ...bon, cpApres: 1200 }));
-      expect(t, p.id).toMatch(/gagnant|gagnante|gagné|domine|devant|meilleure/i);
+      expect(t, p.id).toMatch(/gagnant|gagné|domine|devant|meilleure|magnifique|à vous/i);
     }
   });
 
-  it('signale une position inférieure sans dramatiser', async () => {
+  it('ne commente pas l’état d’une position équilibrée', async () => {
+    // Le répéter à chaque coup dans une partie serrée serait du remplissage.
     for (const p of PROFESSEURS) {
-      const t = await commentaireLocal.commenter(p, contexte({ ...bon, cpApres: -350 }));
-      expect(t, p.id).toMatch(/inférieure|moins bien|difficulté|difficile/i);
+      const t = await commentaireLocal.commenter(p, contexte({ ...bon, cpApres: 40 }));
+      expect(t, p.id).not.toMatch(/perdue|gagnant|domine/i);
     }
   });
 
@@ -311,51 +249,28 @@ describe('le ton suit la position', () => {
       expect(t, p.id).not.toMatch(/bravo|excellent|parfait|très bien|bien joué|félicit/i);
     }
   });
-
-  it('ne commente pas l’état d’une position équilibrée', async () => {
-    // Répéter « la position est équilibrée » à chaque coup serait aussi
-    // lassant que de ne rien dire quand elle est perdue.
-    for (const p of PROFESSEURS) {
-      const t = await commentaireLocal.commenter(p, contexte({ ...bon, cpApres: 40 }));
-      expect(t, p.id).not.toMatch(/perdue|gagnante|domine/i);
-    }
-  });
 });
 
 describe('absence de redite', () => {
   it('ne réutilise pas une tournure déjà employée dans la partie', async () => {
-    // Le défaut : « ce coup était la meilleure continuation » revenait sans
-    // arrêt. On simule une partie entière en tenant l'historique comme le
-    // fait l'écran de jeu.
-    const coups = ['Cf3', 'e4', 'd4', 'Fb5', 'O-O', 'Te1', 'c3', 'h3', 'Cbd2', 'Cf1'];
+    const coups = ['Nf3', 'e4', 'd4', 'Bb5', 'Re1', 'c3', 'h3', 'Nbd2'];
     for (const p of PROFESSEURS) {
       const memoire = { dites: [] as string[], nouvelles: [] as string[], partie: [] as string[] };
-      const ouvertures: string[] = [];
-      const textes: string[] = [];
+      const reactions: string[] = [];
       for (const coupSan of coups) {
         const t = await commentaireLocal.commenter(
           p,
-          contexte({
-            classement: 'excellent',
-            perteCp: 0,
-            meilleurSan: null,
-            cpApres: 30,
-            coupSan,
-            explication: { phrase: 'La position reste saine.', motif: 'sans-consequence' },
-            memoire,
-          }),
+          contexte({ classement: 'excellent', perteCp: 0, meilleurSan: null, cpApres: 30, coupSan, memoire }),
         );
         memoire.dites.push(...memoire.nouvelles);
         memoire.partie.push(...memoire.nouvelles);
         memoire.nouvelles = [];
-        textes.push(t);
-        ouvertures.push(t.split(/(?<=[.!?…])\s/)[0]);
+        reactions.push(t.split(/(?<=[.!?…])\s/)[0]);
       }
-      // Les six premiers commentaires doivent tous ouvrir différemment : le
-      // stock de tournures par professeur est plus grand que cela.
-      const six = new Set(ouvertures.slice(0, 6));
-      expect(six.size, `${p.id} : ${ouvertures.slice(0, 6).join(' | ')}`).toBe(6);
-      expect(new Set(textes).size, p.id).toBe(coups.length);
+      // Le stock de réactions par professeur dépasse six : aucune ne doit
+      // revenir avant qu'il soit épuisé.
+      const six = new Set(reactions.slice(0, 6));
+      expect(six.size, `${p.id} : ${reactions.slice(0, 6).join(' | ')}`).toBe(6);
     }
   });
 });

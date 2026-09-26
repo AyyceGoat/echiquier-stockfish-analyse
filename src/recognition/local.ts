@@ -37,6 +37,19 @@ interface Grille {
   x: number[];
   y: number[];
   pas: number;
+  /**
+   * Qualité de l'ajustement, 0–1.
+   *
+   * Elle manquait, et c'est ce qui rendait la reconnaissance dangereuse :
+   * mesurée sur une image rognée de 4 %, la lecture tombait à trente-deux
+   * cases justes sur soixante-quatre tout en annonçant 0,95 de confiance.
+   * L'écran de correction ne signalait donc rien, et le joueur repartait avec
+   * une position fausse qu'il croyait vérifiée.
+   *
+   * Deux signes trahissent une grille mal posée : les deux axes ne
+   * s'accordent pas sur le même pas, et la grille ne couvre pas l'image.
+   */
+  ajustement: number;
 }
 
 /** Rend l'image dans un canvas de travail et renvoie ses pixels. */
@@ -174,10 +187,19 @@ function detecterGrille(gris: Float32Array, l: number, h: number): Grille {
   const debutX = px.pas === pas ? px.debut : recentrer(px.debut, px.pas, l);
   const debutY = py.pas === pas ? py.debut : recentrer(py.debut, py.pas, h);
 
+  // Accord entre les deux axes : sur un échiquier vu de face et cadré, les
+  // pas détectés horizontalement et verticalement sont presque identiques.
+  const accord = Math.min(px.pas, py.pas) / Math.max(px.pas, py.pas);
+  // Couverture : un échiquier photographié occupe l'essentiel de l'image. Une
+  // grille qui n'en couvre qu'une fraction a été posée sur autre chose.
+  const couverture = Math.min(1, (pas * 8) / Math.min(l, h));
+  const ajustement = Math.max(0, Math.min(1, accord * couverture));
+
   return {
     x: Array.from({ length: 9 }, (_, i) => Math.min(debutX + i * pas, l - 1)),
     y: Array.from({ length: 9 }, (_, i) => Math.min(debutY + i * pas, h - 1)),
     pas,
+    ajustement,
   };
 }
 
@@ -681,12 +703,26 @@ export class ReconnaissanceLocale implements PositionRecognizer {
     }
 
     const confiancesPlates = confiances.flat();
-    const confianceGlobale =
+    const moyenneCases =
       confiancesPlates.reduce((a, b) => a + b, 0) / confiancesPlates.length;
+    /**
+     * La confiance globale tient compte de la GRILLE, pas seulement des cases.
+     *
+     * Une grille mal posée produit soixante-quatre lectures chacune
+     * plausible — chaque découpe contient bien quelque chose — mais toutes
+     * décalées. La moyenne par case reste alors élevée et ment. On la
+     * multiplie donc par la qualité de l'ajustement.
+     */
+    const confianceGlobale = moyenneCases * grille.ajustement;
 
     const remarques: string[] = [
       'Reconnaissance locale : les types de pièces sont déduits de leur silhouette. Vérifiez chaque case signalée.',
     ];
+    if (grille.ajustement < 0.85) {
+      remarques.push(
+        "Le quadrillage n'a pas été retrouvé franchement : l'échiquier est peut-être rogné, vu de biais, ou ne remplit pas l'image. Vérifiez chaque case.",
+      );
+    }
     if (confianceGlobale < 0.5) {
       remarques.push(
         "La confiance est faible. Sur photo d'échiquier physique, la reconnaissance par modèle donne de bien meilleurs résultats.",

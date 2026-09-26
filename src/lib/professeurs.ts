@@ -25,7 +25,11 @@
 
 import type { Classement } from './classification.ts';
 import {
+  COUP_GARDE,
   FIN_BEAU_COUP,
+  INTERROMPU,
+  REACTIONS,
+  REPRISE_ACCORDEE,
   FIN_CONSEIL,
   FIN_OUVERTURES,
   FIN_PIVOT,
@@ -34,6 +38,7 @@ import {
   type IssuePartie,
 } from './repertoireProfesseurs.ts';
 import type { MemoirePhrases } from './memoirePhrases.ts';
+import { decrireCoup, decrireMeilleur, phraseDeFond, sansCoordonnees } from './parole.ts';
 import type { Explication, MotifExplication } from './explications.ts';
 
 /* ==========================================================================
@@ -201,8 +206,15 @@ export function palierDuProfesseur(prof: FicheProfesseur, eleve: NiveauEleve): s
 
 export interface ContexteCommentaire {
   classement: Classement;
-  /** Coup joué, en notation algébrique. */
+  /** Coup joué, en notation algébrique. Sert à l'affichage, jamais à la voix. */
   coupSan: string;
+  /**
+   * Position d'où le coup a été joué.
+   *
+   * Elle permet de nommer les pièces plutôt que de citer des coordonnées :
+   * « votre cavalier » se comprend et se prononce, « Cg6 » ni l'un ni l'autre.
+   */
+  fenAvant?: string;
   /** Meilleur coup, s'il y en avait un meilleur. */
   meilleurSan: string | null;
   /** Variante recommandée, en SAN. Sert à donner une ligne aux joueurs avancés. */
@@ -244,372 +256,15 @@ export interface MoteurCommentaire {
   commenter(prof: FicheProfesseur, ctx: ContexteCommentaire): Promise<string>;
 }
 
-/** Les classements qui désignent une faute. */
-const FAUTES: Classement[] = ['imprecision', 'erreur', 'gaffe'];
 
-/** Les paliers où l'on explique un principe plutôt qu'une variante. */
-const SIMPLE: NiveauEleve[] = ['decouverte', 'debutant'];
-/** Les paliers à qui l'on donne une ligne concrète. */
-const AVANCE: NiveauEleve[] = ['avance', 'confirme'];
 
 /* --------------------------------------------------------------------------
    LA MATIÈRE : ce qu'il y a à dire, indépendamment de qui le dit.
    -------------------------------------------------------------------------- */
 
-/**
- * Pourquoi le coup est fautif, selon le motif.
- *
- * Deux registres, et c'est là que se joue l'adaptation au niveau : à un
- * débutant on explique le mécanisme avec des mots de tous les jours, à un
- * joueur avancé on nomme la chose et on passe à la suite. Servir le même
- * texte aux deux serait refaire l'erreur des paliers du moteur, où tout le
- * monde jouait à 1320.
- */
-const POURQUOI: Record<MotifExplication, { simple: string; technique: string }> = {
-  'piece-en-prise': {
-    simple:
-      'Une pièce que personne ne défend peut être prise gratuitement. Avant de poser la main, regardez ce que l’adversaire attaque.',
-    technique: 'La pièce reste sans défenseur sur une case que l’adversaire contrôle.',
-  },
-  'occasion-manquee': {
-    simple:
-      'Il y avait un coup qui gagnait du matériel, et il est parti. Cherchez toujours les prises et les échecs avant de choisir.',
-    technique: 'La ressource tactique s’évapore après ce coup ; elle ne reviendra pas.',
-  },
-  'menace-ignoree': {
-    simple:
-      'L’adversaire préparait quelque chose et vous avez joué ailleurs. Une menace ne disparaît pas parce qu’on regarde autre chose.',
-    technique: 'La menace n’est ni parée, ni contre-attaquée, ni compensée.',
-  },
-  fourchette: {
-    simple:
-      'Une même pièce peut en attaquer deux à la fois. On ne peut en sauver qu’une.',
-    technique: 'Double attaque : les deux pièces visées ne peuvent être défendues simultanément.',
-  },
-  clouage: {
-    simple:
-      'Une pièce clouée ne peut pas bouger sans exposer ce qu’elle protège derrière elle.',
-    technique: 'Le clouage immobilise la pièce sur la ligne d’attaque.',
-  },
-  enfilade: {
-    simple:
-      'Deux pièces alignées : la première doit s’écarter, et la seconde tombe.',
-    technique: 'Enfilade sur la ligne : la pièce de valeur devant cède celle de derrière.',
-  },
-  'mat-manque': {
-    simple: 'Il y avait un mat. Un mat ne se rattrape pas au coup suivant.',
-    technique: 'La séquence de mat est perdue ; l’avantage retombe au matériel.',
-  },
-  'mat-subi': {
-    simple: 'Ce coup laisse l’adversaire mater. Le roi doit toujours passer avant le reste.',
-    technique: 'La configuration de mat devient forcée.',
-  },
-  'coup-force': {
-    simple: 'Il n’y avait rien d’autre à jouer.',
-    technique: 'Coup unique : la position ne laissait pas d’alternative.',
-  },
-  passif: {
-    simple:
-      'Ce coup ne fait rien. Il ne prend rien, ne menace rien, ne développe rien — et pendant ce temps l’adversaire avance.',
-    technique: 'Coup passif : ni gain d’espace, ni développement, ni menace.',
-  },
-  'sans-consequence': {
-    simple: 'Ce coup ne change pas grand-chose à la position.',
-    technique: 'Aucun effet mesurable sur l’évaluation.',
-  },
-};
-
-/** Le principe à retenir, pour les paliers où l'on enseigne une règle. */
-const PRINCIPE: Partial<Record<MotifExplication, string>> = {
-  'piece-en-prise': 'Après chaque coup adverse, demandez-vous : qu’est-ce qui est attaqué ?',
-  'occasion-manquee': 'Regardez d’abord les prises, puis les échecs, puis le reste.',
-  'menace-ignoree': 'On ne construit pas son plan tant que la menace adverse n’est pas réglée.',
-  fourchette: 'Méfiez-vous du cavalier : c’est lui qui attaque deux pièces à la fois.',
-  clouage: 'Ne mettez pas deux pièces de valeur sur la même ligne que votre roi.',
-  'mat-subi': 'Mettez le roi à l’abri avant d’ouvrir la position.',
-  passif: 'Chaque coup doit faire quelque chose : développer, attaquer, ou améliorer une pièce.',
-};
-
 /* --------------------------------------------------------------------------
    LA VOIX : comment chacun le dit.
    -------------------------------------------------------------------------- */
-
-/**
- * Entrées en matière ordinaires, par professeur.
- *
- * Le stock est volontairement large. Avec quatre tournures par registre,
- * « ce coup était la meilleure continuation » et ses voisines revenaient
- * toutes les trois ou quatre prises de parole ; l'illusion du personnage
- * ne tenait pas. `piocherNeuf` écarte ce qui a déjà servi dans la partie,
- * mais il lui faut de quoi puiser : dix par registre couvrent une partie
- * entière sans reprise pour un même classement.
- */
-const OUVERTURES: Record<string, { faute: string[]; bon: string[] }> = {
-  'homme-ultime': {
-    faute: [
-      'Non.',
-      'C’est une erreur, et vous le saviez en jouant.',
-      'Vous venez de rendre l’initiative.',
-      'Ce coup ne mérite pas d’être discuté longtemps.',
-      'Vous avez joué vite. Trop vite.',
-      'Ce n’est pas le coup, et ce n’est même pas proche.',
-      'Vous relâchez la pression au pire moment.',
-      'Là, vous vous compliquez la vie tout seul.',
-      'Ce coup ne répond à aucune question de la position.',
-      'Vous aviez mieux, et vous ne l’avez pas cherché.',
-    ],
-    bon: [
-      'C’est le coup.',
-      'Correct.',
-      'Rien à reprendre.',
-      'Voilà comment on garde la main.',
-      'Juste.',
-      'Vous tenez la position.',
-      'Bien vu, on continue.',
-      'C’est exactement l’idée.',
-      'Rien à ajouter, la position parle pour vous.',
-      'Propre. La suite maintenant.',
-    ],
-  },
-  ephraim: {
-    faute: [
-      'Reprenons depuis la structure.',
-      'Il y a un problème ici, et il n’est pas tactique.',
-      'Ce coup coûte plus qu’il ne rapporte.',
-      'Arrêtons-nous une seconde.',
-      'Ce coup répond à la mauvaise question.',
-      'Vous traitez le symptôme, pas la cause.',
-      'L’ordre des coups n’y est pas.',
-      'Ce coup affaiblit ce que vous veniez de consolider.',
-      'Il manque une étape avant celui-ci.',
-      'Vous perdez un temps que la position ne vous rendra pas.',
-    ],
-    bon: [
-      'Bien.',
-      'C’est le bon ordre.',
-      'Solide.',
-      'La structure tient, continuez.',
-      'Méthodique. C’est ainsi qu’on progresse.',
-      'Vous améliorez la pièce qui en avait le plus besoin.',
-      'Rien de spectaculaire, et c’est très bien ainsi.',
-      'La position se tient. Poursuivez ce plan.',
-      'Juste : vous préparez avant d’agir.',
-      'C’est le coup qu’on joue quand on a compris la position.',
-    ],
-  },
-  johana: {
-    faute: [
-      'Attention.',
-      'Là, vous êtes allé trop vite.',
-      'Vous pouviez faire mieux, et je pense que vous le sentiez.',
-      'Bon. On regarde ensemble.',
-      'Doucement, on reprend.',
-      'Ce coup part d’une bonne intention, mais il rate son but.',
-      'Vous avez regardé vos pièces, pas les siennes.',
-      'Il y avait une question à se poser avant celui-là.',
-      'Ce coup vous éloigne de votre plan.',
-      'On se calme et on recompte.',
-    ],
-    bon: [
-      'Voilà.',
-      'C’est exactement ça.',
-      'Vous avez vu juste, et c’est ce qui compte.',
-      'Très bien. Continuez comme ça.',
-      'Oui. C’est le raisonnement que j’attendais.',
-      'Bon coup, et surtout bonne raison.',
-      'Vous progressez, ça se voit sur ce genre de coup.',
-      'Parfait pour la position.',
-      'Vous avez pris le temps, et ça se sent.',
-      'C’est solide, on avance.',
-    ],
-  },
-  serena: {
-    faute: [
-      'Hmm.',
-      'Ah, c’est dommage.',
-      'Voyons voir.',
-      'Attendez.',
-      'Tiens, non.',
-      'Ce coup a du charme, mais il ne tient pas.',
-      'C’est le genre de coup qu’on joue quand on regarde ailleurs.',
-      'Voilà une idée séduisante et malheureusement fausse.',
-      'Il y a une intention, mais elle se retourne.',
-      'Non, pas celui-là.',
-    ],
-    bon: [
-      'Joli.',
-      'Très bien vu.',
-      'C’est le genre de coup qui fait plaisir.',
-      'Parfait.',
-      'Ah, voilà.',
-      'C’est propre, et c’est juste.',
-      'Vous avez trouvé le bon ordre.',
-      'Oui, c’est ainsi qu’il fallait la prendre.',
-      'Excellent choix pour cette position.',
-      'Voilà un coup qui a du sens.',
-    ],
-  },
-};
-
-/** Manière d'annoncer le meilleur coup. */
-const CORRECTION: Record<string, (m: string) => string> = {
-  'homme-ultime': (m) => `${m} était le coup. Pas le meilleur parmi d’autres : le seul.`,
-  ephraim: (m) => `${m} d’abord. C’est l’ordre qui compte, et il commence là.`,
-  johana: (m) => `Il fallait jouer ${m}. Regardez-le bien, vous le retrouverez.`,
-  serena: (m) => `${m}, et tout se remet d’aplomb.`,
-};
-
-/** Manière d'annoncer ce que l'adversaire menace maintenant. */
-const MENACE: Record<string, (r: string) => string> = {
-  'homme-ultime': (r) => `Il joue ${r} et vous subissez. Vous n’aviez pas à en arriver là.`,
-  ephraim: (r) => `Attendez-vous à ${r} : c’est la suite naturelle, et elle est désagréable.`,
-  johana: (r) => `Maintenant il va jouer ${r}. Anticipez-le, ne le découvrez pas.`,
-  serena: (r) => `Et il ne va pas se gêner : ${r} arrive.`,
-};
-
-const CLOTURES: Record<string, string[]> = {
-  'homme-ultime': [
-    'Reprenez l’initiative maintenant, ou cette partie est déjà écrite.',
-    'Je ne le répéterai pas.',
-    'Jouez le coup qui force, pas celui qui rassure.',
-  ],
-  ephraim: [
-    'Sécurisez d’abord, ouvrez ensuite. Dans cet ordre.',
-    'La structure commande, la tactique suit.',
-    'Reprenez le plan là où vous l’avez laissé.',
-  ],
-  johana: [
-    'Ne reculez pas parce que ça vous paraît trop beau. Jouez-le.',
-    'Vous en êtes capable, alors allez au bout.',
-    'Ce n’est pas grave. Ce qui compte, c’est de le voir la prochaine fois.',
-  ],
-  serena: ['Bref — revenons à la position.', 'Enfin, tout ça pour dire : regardez la position.'],
-};
-
-/**
- * Les digressions de Serena.
- *
- * Elle est la seule à en avoir, et c'est son trait principal. Elles sont
- * choisies selon le motif détecté, pour que le détour garde un rapport avec
- * la position : elle prend le chemin long, elle ne raconte pas n'importe
- * quoi. Elles sont volontairement longues — c'est le personnage.
- */
-const DIGRESSIONS: Partial<Record<MotifExplication, string[]>> = {
-  'piece-en-prise': [
-    'Vous savez, Capablanca prétendait n’avoir jamais étudié une seule ouverture. Ce qu’il faisait, à chaque coup, c’était compter les défenseurs. Rien d’autre. Il est devenu champion du monde avec cette seule habitude, et il a perdu une trentaine de parties en trente ans de carrière.',
-    'À La Havane, on joue encore dans la rue, sur des pendules cassées et des échiquiers dont il manque des pièces — un bouchon fait la tour. La première chose qu’on y apprend aux enfants n’est pas une ouverture : c’est de regarder ce qui est défendu avant de toucher quoi que ce soit.',
-  ],
-  'occasion-manquee': [
-    'Tal disait qu’il voyait les combinaisons avant de savoir pourquoi elles fonctionnaient ; il calculait ensuite, par acquit de conscience. On n’est pas obligé d’avoir son génie, mais on est obligé de regarder — c’est gratuit.',
-    'Il y a cette partie de Morphy, à l’Opéra de Paris en 1858, dans la loge du duc de Brunswick. Il jouait entre deux actes, distrait, contre deux amateurs qui se consultaient. Il a tout sacrifié en dix-sept coups. La leçon n’est pas le sacrifice : c’est qu’il regardait les pièces adverses pendant qu’eux regardaient les leurs.',
-  ],
-  fourchette: [
-    'Les Russes appellent la fourchette du cavalier « la pique ». Dans leurs écoles, on l’enseigne avant le roque — avant, oui. Ils considèrent qu’un enfant qui ne voit pas une fourchette n’a rien à faire sur un échiquier.',
-    'On dit que le cavalier fait perdre les débutants et gagner les maîtres. C’est la même pièce ; toute la différence tient à qui voit la fourchette en premier.',
-  ],
-  'menace-ignoree': [
-    'Nimzowitsch a écrit tout un livre autour de cette idée qu’une menace non traitée ne s’évapore pas. Il était insupportable, se plaignait de tout, et il avait raison sur ce point précis.',
-  ],
-  'mat-manque': [
-    'Chez Greco, au dix-septième siècle, on trouve des mats qui traînaient dans des positions que personne ne regardait. Il les notait pour les vendre à des nobles italiens. Les mats sont restés ; les nobles, beaucoup moins.',
-  ],
-  passif: [
-    'Steinitz soutenait qu’un avantage doit être exploité sous peine d’être perdu. On l’a pris pour un dogmatique. Il avait simplement remarqué qu’une position ne reste jamais immobile : si vous ne l’améliorez pas, quelqu’un d’autre s’en charge.',
-  ],
-};
-
-/**
- * Registres propres aux étiquettes que « faute / bon » ne couvrait pas.
- *
- * Défaut corrigé : un coup forcé recevait l'ouverture d'un bon coup, et une
- * gaffe pouvait être commentée comme un coup passif. Chaque étiquette a
- * maintenant ses tournures.
- */
-const OUVERTURES_GRAVES: Record<string, string[]> = {
-  'homme-ultime': [
-    'Non. C’est une faute grave.',
-    'Vous venez de perdre le fil de cette partie.',
-    'Ce coup est indéfendable.',
-    'Voilà comment on gâche une position.',
-  ],
-  ephraim: [
-    'Arrêtons-nous, c’est grave.',
-    'Là, la position se retourne contre vous.',
-    'Ce coup casse la structure, et l’équilibre avec.',
-    'Reprenons : il y a une faute lourde ici.',
-  ],
-  johana: [
-    'Aïe. Là, c’est sérieux.',
-    'Bon, on va regarder ça ensemble, parce que ça fait mal.',
-    'Ce coup vous coûte beaucoup trop.',
-    'Attention, vous venez de lâcher la partie.',
-  ],
-  serena: ['Oh.', 'Aïe aïe aïe.', 'Alors là…', 'Mmh, c’est ennuyeux.'],
-};
-
-const OUVERTURES_UNIQUE: Record<string, string[]> = {
-  'homme-ultime': [
-    'Il n’y avait que ça, et vous l’avez trouvé.',
-    'Un seul coup tenait. C’était celui-là.',
-    'Forcé, mais encore fallait-il le voir.',
-  ],
-  ephraim: [
-    'C’était le seul coup, et c’est bien celui-là.',
-    'Position forcée : vous avez suivi la contrainte.',
-    'Aucune alternative ne tenait. Vous avez joué juste.',
-  ],
-  johana: [
-    'Il n’y avait que ce coup, et vous l’avez trouvé.',
-    'Position forcée : vous ne pouviez faire que ça, et vous l’avez fait.',
-    'Un seul coup tenait. Vous l’avez vu.',
-  ],
-  serena: [
-    'Le seul coup — et vous l’avez trouvé.',
-    'Position forcée, mais il fallait la reconnaître.',
-    'Rien d’autre ne tenait. Bien vu.',
-  ],
-};
-
-const OUVERTURES_THEORIE: Record<string, string[]> = {
-  'homme-ultime': ['Théorie. On continue.', 'C’est la ligne connue.', 'Rien à dire, c’est le livre.'],
-  ephraim: [
-    'Nous sommes encore dans la théorie.',
-    'Ligne connue, jouée dans le bon ordre.',
-    'C’est le livre. Continuez.',
-  ],
-  johana: [
-    'C’est la théorie, vous êtes sur les rails.',
-    'Ligne connue. Rien à corriger.',
-    'Bien, c’est le coup du livre.',
-  ],
-  serena: ['C’est du livre.', 'Théorie connue.', 'La ligne classique, oui.'],
-};
-
-/**
- * Pourquoi le coup était le SEUL jouable.
- *
- * Un coup forcé ne se commente pas comme un bon coup : il n'y avait pas de
- * choix, et c'est cela qu'il faut dire. « Ce coup ne change pas
- * l'appréciation de la position » ne voulait rien dire ici.
- */
-const POURQUOI_UNIQUE: Record<string, string[]> = {
-  'homme-ultime': [
-    'Toute autre continuation perdait sur-le-champ. Il n’y avait rien à choisir.',
-    'Les alternatives cédaient du matériel ou le roi. Celle-ci tenait, point.',
-  ],
-  ephraim: [
-    'Les autres coups laissaient la position s’effondrer : celui-ci était contraint.',
-    'La position ne laissait qu’une seule continuation praticable.',
-  ],
-  johana: [
-    'Tous les autres coups perdaient. Celui-là était le seul à tenir.',
-    'Vous n’aviez pas le choix — et c’est déjà bien de l’avoir vu.',
-  ],
-  serena: [
-    'Position contrainte : rien d’autre ne tenait debout.',
-    'Un seul coup survivait. Les autres perdaient sur place.',
-  ],
-};
 
 /**
  * Le ton suit la POSITION, pas seulement la qualité du coup.
@@ -627,65 +282,6 @@ export function situationDe(cp: number): Situation {
   if (cp < 600) return 'mieux';
   return 'gagnant';
 }
-
-const ETAT_POSITION: Record<string, Partial<Record<Situation, string[]>>> = {
-  'homme-ultime': {
-    perdu: [
-      'Cela dit, regardons les choses en face : cette position est perdue. Défendez-vous coup par coup et ne donnez plus rien.',
-      'Et soyons clairs : vous êtes perdu. Compliquez la position, c’est votre seule chance.',
-    ],
-    difficile: [
-      'Votre position reste inférieure. Serrez les rangs avant de penser à attaquer.',
-      'Vous êtes moins bien. Priorité à la solidité.',
-    ],
-    gagnant: [
-      'Vous dominez. Ne relâchez rien : c’est là qu’on perd les parties gagnées.',
-      'La position est gagnante. Simplifiez et convertissez.',
-    ],
-  },
-  ephraim: {
-    perdu: [
-      'Il faut le dire clairement : la position est perdue. On ne joue plus pour gagner, on joue pour compliquer.',
-      'La position ne tient plus. Cherchez les coups qui posent des problèmes, pas ceux qui rangent.',
-    ],
-    difficile: [
-      'Vous êtes en difficulté. Rétablissez d’abord la structure, le reste suivra.',
-      'Position inférieure : consolidez avant toute chose.',
-    ],
-    gagnant: [
-      'Vous êtes gagnant. Échangez les pièces, pas les pions.',
-      'La position est nettement meilleure. Simplifiez méthodiquement.',
-    ],
-  },
-  johana: {
-    perdu: [
-      'Je ne vais pas vous mentir : la position est très mauvaise. Mais on ne lâche pas — cherchez le coup qui gêne le plus.',
-      'C’est perdu, et ce n’est pas grave. Défendez-vous bien : c’est là qu’on apprend le plus.',
-    ],
-    difficile: [
-      'Vous êtes moins bien, mais rien n’est joué. Solidifiez.',
-      'Position difficile. Une chose à la fois : mettez vos pièces en sécurité.',
-    ],
-    gagnant: [
-      'Vous êtes largement devant. Restez concentré jusqu’au bout.',
-      'C’est gagnant. Ne vous précipitez pas, la partie est à vous.',
-    ],
-  },
-  serena: {
-    perdu: [
-      'Ceci dit, la position est perdue, autant se le dire. Il reste à compliquer — c’est souvent là que les parties se retournent.',
-      'La position est très mauvaise. Cherchez le désordre, c’est votre meilleur allié.',
-    ],
-    difficile: [
-      'Vous êtes moins bien. Rien de dramatique, mais il faut consolider.',
-      'Position inférieure : de la patience, et pas de coup faible.',
-    ],
-    gagnant: [
-      'Vous dominez largement. Simplifiez, et ne cherchez pas le beau coup.',
-      'C’est gagné, si vous ne compliquez pas vous-même.',
-    ],
-  },
-};
 
 /** Choix déterministe dans une liste, à partir d'une chaîne. */
 function piocher<T>(liste: T[], graine: string): T {
@@ -745,109 +341,88 @@ export const commentaireLocal: MoteurCommentaire = {
   nom: 'Commentaire local',
   enLigne: false,
 
+  /**
+   * Une réplique parlée : deux phrases courtes, aucune notation.
+   *
+   * L'assemblage précédent empilait ouverture, constat, correction, menace,
+   * état de la position, principe et clôture — jusqu'à sept propositions,
+   * truffées de « Cg6 » et de « Td1 ». À l'écrit dans un rapport, cela se
+   * lit ; dit à voix haute pendant une partie, c'est un exposé, et la
+   * synthèse vocale écorche la notation.
+   *
+   * On garde donc l'essentiel : une réaction brève dans la voix du
+   * professeur, puis ce que le coup fait, en français. Le détail complet
+   * reste disponible dans le rapport de fin de partie.
+   */
   async commenter(prof, ctx) {
-    const estFaute = FAUTES.includes(ctx.classement);
-    const simple = SIMPLE.includes(ctx.eleve);
-    const avance = AVANCE.includes(ctx.eleve);
-    const motif = ctx.explication.motif;
+    const memoire = ctx.memoire;
     const graine = `${prof.id}|${ctx.coupSan}|${ctx.classement}|${ctx.eleve}`;
-
     const morceaux: string[] = [];
-    const deja = ctx.memoire;
+
+    // 1. Réaction, en deux ou trois mots.
+    const registre = REACTIONS[prof.id] ?? REACTIONS.ephraim;
+    const ton: 'bon' | 'faute' | 'grave' | 'neutre' =
+      ctx.classement === 'gaffe'
+        ? 'grave'
+        : ctx.classement === 'erreur' || ctx.classement === 'imprecision'
+          ? 'faute'
+          : ctx.classement === 'theorie'
+            ? 'neutre'
+            : 'bon';
+    morceaux.push(piocherNeuf(registre[ton], graine, memoire));
+
+    // 2. Ce que le coup fait, traduit en français.
+    const coup = ctx.fenAvant ? decrireCoup(ctx.fenAvant, ctx.coupSan) : null;
+    const meilleur = ctx.fenAvant ? decrireMeilleur(ctx.fenAvant, ctx.meilleurSan) : null;
+    morceaux.push(
+      phraseDeFond({
+        classement: ctx.classement,
+        motif: ctx.explication.motif,
+        coup,
+        meilleur,
+        eleve: ctx.eleve,
+      }),
+    );
+
+    // 3. L'état de la position, et seulement quand il est tranché. Le répéter
+    //    à chaque coup dans une partie équilibrée serait du remplissage.
     const situation = situationDe(ctx.cpApres);
-
-    // 1. Ouverture, choisie selon l'ÉTIQUETTE et non selon un simple
-    //    « faute / bon » : une gaffe, un coup forcé et un coup de théorie
-    //    n'appellent pas la même entrée en matière.
-    const registre = OUVERTURES[prof.id] ?? OUVERTURES.ephraim;
-    let pool: string[];
-    if (ctx.classement === 'gaffe') pool = OUVERTURES_GRAVES[prof.id] ?? registre.faute;
-    else if (ctx.classement === 'unique') pool = OUVERTURES_UNIQUE[prof.id] ?? registre.bon;
-    else if (ctx.classement === 'theorie') pool = OUVERTURES_THEORIE[prof.id] ?? registre.bon;
-    else pool = estFaute ? registre.faute : registre.bon;
-    morceaux.push(piocherNeuf(pool, graine, deja));
-
-    // 2. Digression de Serena — avant le fond, c'est son mouvement naturel.
-    let aDigresse = false;
-    if (prof.id === 'serena') {
-      const d = motif ? DIGRESSIONS[motif] : undefined;
-      // Elle digresse largement sur les fautes, et de temps en temps ailleurs.
-      if (d && (estFaute || ctx.classement === 'excellent')) {
-        morceaux.push(piocherNeuf(d, graine, deja));
-        aDigresse = true;
-      }
+    if (situation === 'perdu' || situation === 'gagnant') {
+      const etat = ETAT_COURT[prof.id]?.[situation];
+      if (etat) morceaux.push(piocherNeuf(etat, graine, memoire));
     }
 
-    // 3. Constat.
-    //
-    //    Le motif et le classement sont calculés séparément et peuvent se
-    //    contredire : une gaffe se voyait commentée « ce coup est jouable
-    //    mais passif », ce qui est absurde. Quand le motif est anodin alors
-    //    que l'étiquette est grave, on écarte la phrase du motif et on parle
-    //    du coût réel.
-    const motifAnodin = motif === 'passif' || motif === 'sans-consequence';
-    const graveEtAnodin = (ctx.classement === 'gaffe' || ctx.classement === 'erreur') && motifAnodin;
-
-    if (ctx.classement === 'theorie' && motifAnodin) {
-      // L'ouverture a déjà tout dit : « c'est le livre ». Y ajouter « ce coup
-      // ne change pas l'appréciation de la position » allonge sans rien
-      // apprendre, et c'est le genre de remplissage qui se remarque.
-    } else if (ctx.classement === 'unique') {
-      // Un coup forcé s'explique par l'absence d'alternative, pas par un
-      // constat neutre du type « ne change pas l'appréciation ».
-      morceaux.push(piocherNeuf(POURQUOI_UNIQUE[prof.id] ?? [], graine, deja));
-    } else if (graveEtAnodin) {
-      const pions = (ctx.perteCp / 100).toFixed(1).replace('.', ',');
-      morceaux.push(`Ce coup coûte ${pions} pion${ctx.perteCp >= 200 ? 's' : ''}.`);
-    } else {
-      morceaux.push(ctx.explication.phrase);
-    }
-
-    // 4. Le coup qu'il fallait jouer, et pourquoi.
-    if (estFaute && ctx.meilleurSan) {
-      morceaux.push((CORRECTION[prof.id] ?? ((m: string) => `Il y avait ${m}.`))(ctx.meilleurSan));
-      if (motif && !graveEtAnodin) {
-        const p = POURQUOI[motif];
-        if (p) morceaux.push(simple ? p.simple : p.technique);
-      }
-    }
-
-    // 5. Le complément technique, réservé à qui le comprend.
-    if (ctx.explication.complement && !simple) morceaux.push(ctx.explication.complement);
-
-    // 6. Ce que l'adversaire menace maintenant : sans cela, le commentaire
-    //    décrit le passé et n'aide pas au coup suivant.
-    if (estFaute && ctx.reponseAdverseSan) {
-      morceaux.push((MENACE[prof.id] ?? ((r: string) => `Il menace ${r}.`))(ctx.reponseAdverseSan));
-    }
-
-    // 7. L'état RÉEL de la position.
-    //
-    //    C'est ce qui manquait le plus : un élève sur le point d'être maté
-    //    s'entendait féliciter parce que son coup était le meilleur
-    //    disponible. Un coup peut être le meilleur ET la position rester
-    //    perdue ; le professeur doit dire les deux.
-    const etat = ETAT_POSITION[prof.id]?.[situation];
-    if (etat) morceaux.push(piocherNeuf(etat, graine, deja));
-
-    // 8. Principe pour les débutants, variante pour les avancés.
-    if (estFaute) {
-      if (simple && motif && PRINCIPE[motif]) {
-        morceaux.push(`À retenir : ${PRINCIPE[motif]}`);
-      } else if (avance && ctx.varianteSan.length >= 2) {
-        morceaux.push(`La suite : ${ctx.varianteSan.slice(0, 6).join(' ')}.`);
-      }
-    }
-
-    // 9. Clôture, dans la voix. Serena ne referme son détour que si elle en
-    //    a pris un.
-    if (estFaute && (prof.id !== 'serena' || aDigresse)) {
-      morceaux.push(piocherNeuf(CLOTURES[prof.id] ?? [''], graine, deja));
-    }
-
-    return morceaux.filter(Boolean).join(' ');
+    // Filet de sécurité : aucune coordonnée ne doit survivre jusqu'à la voix.
+    return sansCoordonnees(morceaux.filter(Boolean).join(' '));
   },
 };
+
+/**
+ * État de la position, en une phrase brève.
+ *
+ * L'ancien registre expliquait comment se défendre en deux propositions. Dit
+ * à voix haute après chaque coup, c'était trop long ; la consigne détaillée
+ * appartient au bilan de fin de partie.
+ */
+const ETAT_COURT: Record<string, Partial<Record<Situation, string[]>>> = {
+  'homme-ultime': {
+    perdu: ['C’est perdu. Défendez-vous.', 'Vous êtes perdu. Compliquez.', 'Position perdue. Ne donnez plus rien.'],
+    gagnant: ['Vous dominez. Ne relâchez rien.', 'C’est gagnant. Convertissez.', 'La position est à vous.'],
+  },
+  ephraim: {
+    perdu: ['La position est perdue. Compliquez.', 'C’est perdu ; jouez pour gêner.', 'Position intenable. Posez des problèmes.'],
+    gagnant: ['Vous êtes gagnant. Simplifiez.', 'C’est gagné. Échangez les pièces.', 'Position nettement meilleure.'],
+  },
+  johana: {
+    perdu: ['C’est très mauvais, mais on ne lâche pas.', 'Position perdue. Défendez-vous bien.', 'C’est perdu ; cherchez le coup qui gêne.'],
+    gagnant: ['Vous êtes largement devant.', 'C’est gagnant. Restez concentré.', 'La partie est à vous.'],
+  },
+  serena: {
+    perdu: ['La position est perdue. Compliquez.', 'C’est mauvais ; cherchez le désordre.', 'Perdue, autant se le dire.'],
+    gagnant: ['Vous dominez largement.', 'C’est gagné, sauf accident.', 'Position magnifique.'],
+  },
+};
+
 
 /**
  * Emplacement de la future implémentation en ligne.
@@ -968,20 +543,30 @@ export function issueDe(resultat: string, monCamp: 'w' | 'b', raison: string): I
  * chaque table et d'élargir l'interface du module.
  */
 export const REGISTRES_FIGES = {
-  PALIER_POUR_ELEVE,
-  FAUTES,
-  SIMPLE,
-  AVANCE,
-  POURQUOI,
-  PRINCIPE,
-  OUVERTURES,
-  CORRECTION,
-  MENACE,
-  CLOTURES,
-  DIGRESSIONS,
-  OUVERTURES_GRAVES,
-  OUVERTURES_UNIQUE,
-  OUVERTURES_THEORIE,
-  POURQUOI_UNIQUE,
-  ETAT_POSITION,
+  ETAT_COURT,
 };
+
+/* ==========================================================================
+   RÉPLIQUES BRÈVES
+   ========================================================================== */
+
+/**
+ * Ce que dit le professeur quand on joue pendant qu'il parle.
+ *
+ * Il s'interrompait et restait muet deux ou trois coups, ce qui donnait
+ * l'impression qu'il avait décroché. Il reconnaît maintenant le coup, en
+ * trois mots, avant d'enchaîner sur son commentaire.
+ */
+export function repliqueInterrompu(prof: FicheProfesseur, memoire?: MemoirePhrases): string {
+  return piocherNeuf(INTERROMPU[prof.id] ?? [], `${prof.id}|coupe|${Date.now()}`, memoire);
+}
+
+/** Réponse au choix de reprendre le coup. */
+export function repliqueReprise(prof: FicheProfesseur, memoire?: MemoirePhrases): string {
+  return piocherNeuf(REPRISE_ACCORDEE[prof.id] ?? [], `${prof.id}|reprise|${Date.now()}`, memoire);
+}
+
+/** Réponse au choix de garder le coup. */
+export function repliqueGarder(prof: FicheProfesseur, memoire?: MemoirePhrases): string {
+  return piocherNeuf(COUP_GARDE[prof.id] ?? [], `${prof.id}|garder|${Date.now()}`, memoire);
+}

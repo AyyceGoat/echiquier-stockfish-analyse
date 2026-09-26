@@ -339,3 +339,63 @@ export const LECON_MOTIF: Partial<Record<MotifExplication, string>> = {
   'mat-subi': 'comptez les cases de fuite de votre roi avant d’ouvrir une ligne',
   'occasion-manquee': 'avant de consolider, vérifiez s’il n’y a pas un coup qui gagne tout de suite',
 };
+
+/* --- Réactions brèves ----------------------------------------------------
+   Deux mots, trois au plus. C'est ce qui ouvre une réplique parlée : un coach
+   ne commence pas par une subordonnée. Les registres longs restent employés
+   par le rapport écrit, qui se lit et se relit. */
+export const REACTIONS: Record<string, Record<'bon' | 'faute' | 'grave' | 'neutre', string[]>> = {
+  'homme-ultime': {
+    bon: ['Juste.', 'Correct.', 'Bien.', 'C’est le coup.', 'Rien à redire.', 'Propre.'],
+    faute: ['Non.', 'Trop mou.', 'Vous relâchez.', 'Pas celui-là.', 'Insuffisant.', 'Vous perdez le fil.'],
+    grave: ['Non, c’est grave.', 'Là, vous lâchez la partie.', 'Faute lourde.', 'Indéfendable.', 'Vous venez de tout gâcher.'],
+    neutre: ['On continue.', 'Bien.', 'Poursuivez.', 'Soit.'],
+  },
+  ephraim: {
+    bon: ['Bien.', 'Solide.', 'Bon ordre.', 'C’est méthodique.', 'La structure tient.', 'Juste.'],
+    faute: ['Attention.', 'Ce n’est pas l’ordre.', 'Reprenons.', 'Il manque une étape.', 'Trop tôt.', 'Pas encore.'],
+    grave: ['Arrêtons-nous.', 'C’est grave.', 'La position se retourne.', 'Faute lourde.', 'Vous cassez tout.'],
+    neutre: ['On continue.', 'Poursuivez.', 'Très bien.', 'Suivant.'],
+  },
+  johana: {
+    bon: ['Voilà !', 'Très bien.', 'Oui, c’est ça.', 'Bien vu.', 'Parfait.', 'Vous progressez.'],
+    faute: ['Attention.', 'Doucement.', 'Hmm, pas tout à fait.', 'Regardez mieux.', 'Un peu vite.', 'On reprend.'],
+    grave: ['Aïe.', 'Là, c’est sérieux.', 'Oh non.', 'Ça fait mal.', 'Attention, c’est lourd.'],
+    neutre: ['On continue.', 'D’accord.', 'Très bien.', 'Allez-y.'],
+  },
+  serena: {
+    bon: ['Joli.', 'Ah, voilà.', 'Très bien vu.', 'Élégant.', 'Parfait.', 'C’est ça.'],
+    faute: ['Hmm.', 'Tiens, non.', 'Dommage.', 'Ah, attention.', 'Pas tout à fait.', 'Voyons…'],
+    grave: ['Oh.', 'Aïe aïe aïe.', 'Alors là…', 'C’est ennuyeux.', 'Mmh, non.'],
+    neutre: ['On continue.', 'Bien.', 'Poursuivons.', 'Allons-y.'],
+  },
+};
+
+/** Réponse au choix « reprendre le coup ». */
+export const REPRISE_ACCORDEE: Record<string, string[]> = {
+  'homme-ultime': ['Bien. Rejouez, et réfléchissez cette fois.', 'On reprend. Faites mieux.', 'Soit. Recommencez.'],
+  ephraim: ['D’accord, on reprend.', 'Très bien, rejouez ce coup.', 'On revient en arrière. Regardez la position.'],
+  johana: ['D’accord, on reprend !', 'Bonne idée, rejouez-le.', 'On efface, à vous.'],
+  serena: ['On reprend, volontiers.', 'Très bien, revenons en arrière.', 'D’accord, rejouez.'],
+};
+
+/** Réponse au choix « garder le coup ». */
+export const COUP_GARDE: Record<string, string[]> = {
+  'homme-ultime': ['Comme vous voulez. On continue.', 'Vous assumez. Bien.', 'Soit, poursuivons.'],
+  ephraim: ['Bien, on continue avec ce coup.', 'D’accord. Voyons la suite.', 'Entendu, poursuivons.'],
+  johana: ['D’accord, on continue !', 'Très bien, allons-y.', 'Ça marche, on poursuit.'],
+  serena: ['Va pour ce coup.', 'Entendu, continuons.', 'D’accord, poursuivons.'],
+};
+
+/**
+ * Ce que dit le professeur quand on joue pendant qu'il parle.
+ *
+ * Il doit s'interrompre et reconnaître le coup, brièvement. Rester muet deux
+ * ou trois coups, comme c'était le cas, donne l'impression qu'il a décroché.
+ */
+export const INTERROMPU: Record<string, string[]> = {
+  'homme-ultime': ['Ah, vous avez joué.', 'Vous enchaînez. Bien.', 'Déjà ? Voyons.'],
+  ephraim: ['Ah, vous avez joué ça.', 'Vous allez vite. Regardons.', 'Bien, continuons.'],
+  johana: ['Ah, vous enchaînez !', 'Oh, déjà ! Voyons ça.', 'Vous êtes rapide, d’accord.'],
+  serena: ['Ah, vous avez joué ça.', 'Vite fait ! Voyons.', 'Oh, déjà ?'],
+};
