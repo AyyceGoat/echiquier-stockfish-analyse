@@ -153,6 +153,9 @@ async function apercu() {
  * combinaison serait impossible ; pré-générer chaque phrase est tractable, et
  * l'enchaînement s'entend comme une diction normale.
  */
+/** Noms de pièces, pour fabriquer les descriptions de coups. */
+const NOM = { p: 'pion', n: 'cavalier', b: 'fou', r: 'tour', q: 'dame', k: 'roi' };
+
 async function phrasesFigees() {
   const rep = await import('../src/lib/repertoireProfesseurs.ts');
   const prof = await import('../src/lib/professeurs.ts');
@@ -173,6 +176,65 @@ async function phrasesFigees() {
   };
 
   const sortie = new Set();
+
+  /**
+   * Les phrases produites par la traduction en langage humain.
+   *
+   * Elles ne vivent dans aucun registre : elles sont fabriquées à partir du
+   * motif, du classement et des pièces en jeu. On énumère donc toutes les
+   * combinaisons plausibles et on récolte les textes distincts — sans quoi
+   * l'essentiel de ce que dit un professeur passerait par la synthèse à la
+   * demande, avec son délai et son silence possible.
+   */
+  const parole = await import('../src/lib/parole.ts');
+  const PIECES = ['p', 'n', 'b', 'r', 'q', 'k'];
+  const decrit = (type, roque = false) => ({
+    sujet: type === 'q' || type === 'r' ? `votre ${NOM[type]}` : `votre ${NOM[type]}`,
+    article: type === 'q' || type === 'r' ? `la ${NOM[type]}` : `le ${NOM[type]}`,
+    capture: null,
+    roque,
+    promotion: false,
+    echec: false,
+    type,
+  });
+  const MOTIFS = [
+    undefined,
+    'piece-en-prise',
+    'menace-ignoree',
+    'fourchette',
+    'clouage',
+    'enfilade',
+    'mat-manque',
+    'mat-subi',
+    'occasion-manquee',
+    'coup-force',
+    'passif',
+    'sans-consequence',
+  ];
+  const CLASSEMENTS = ['theorie', 'unique', 'excellent', 'bon', 'imprecision', 'erreur', 'gaffe'];
+  const ELEVES = ['decouverte', 'debutant', 'intermediaire', 'avance', 'confirme'];
+  for (const motif of MOTIFS) {
+    for (const classement of CLASSEMENTS) {
+      for (const eleve of ELEVES) {
+        for (const tc of PIECES) {
+          for (const tm of [...PIECES, null]) {
+            for (const roque of [false, true]) {
+              const t = parole.phraseDeFond({
+                classement,
+                motif,
+                coup: decrit(tc),
+                meilleur: tm === null ? null : decrit(tm, roque),
+                eleve,
+              });
+              const propre = t.trim();
+              if (propre.length >= 12) sortie.add(propre);
+            }
+          }
+        }
+      }
+    }
+  }
+
   for (const module of [rep, prof]) {
     for (const [nom, valeur] of Object.entries(module)) {
       if (typeof valeur === 'function') continue;

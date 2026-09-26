@@ -290,6 +290,71 @@ La clé n'est jamais incluse dans le bundle client.
 - Table de hachage réglée dynamiquement : 16 Mo sur iOS (au-delà, Safari fait
   recharger l'onglet), 32 Mo sur les autres mobiles, 128 Mo sur ordinateur.
 
+### Lecture d'une position par photo
+
+La lecture prenait une à deux minutes. La cause est le VOLUME DE SORTIE : le
+schéma demandait deux tableaux de huit sur huit — soixante-quatre chaînes
+entre guillemets, puis soixante-quatre nombres de confiance. La durée d'une
+génération suit d'abord ce qu'on lui fait écrire.
+
+Le modèle ne produit plus que le placement sur une ligne, dans la forme des
+FEN (`rnbqkbnr/pppppppp/8/...`, une soixantaine de caractères), et la liste
+des seules cases douteuses — zéro à cinq en pratique. La forme huit sur huit
+est reconstruite côté fonction et validée comme avant. `max_tokens` passe de
+8 000 à 700.
+
+Le modèle se règle par `MODELE_RECONNAISSANCE` : `claude-opus-5` par défaut,
+parce qu'une pièce mal lue fausse toute l'analyse qui suit ; un modèle plus
+rapide est le levier suivant si besoin.
+
+**La lecture locale, elle, n'est pas faite pour les photos.** Mesuré en
+dégradant une capture parfaite :
+
+| épreuve | cases justes | confiance annoncée |
+|---|---|---|
+| capture nette | 56/64 | 0,86 |
+| flou marqué | 52/64 | 0,82 |
+| rogné de 4 % | **32/64** | 0,52 |
+| rogné de 8 % | 33/64 | 0,47 |
+
+Elle repose sur une détection de grille par gradient et une comparaison de
+silhouettes : elle suppose un cadrage serré, un contraste franc et une vue de
+face — les conditions d'une capture d'écran, pas d'une photo.
+
+Le défaut grave n'était pas la chute, c'était le **mensonge** : avant
+correction, une lecture à 32 cases justes sur 64 annonçait 0,95 de confiance.
+L'écran de correction ne signalait donc rien. La confiance globale intègre
+désormais la qualité d'ajustement de la grille — accord entre les deux axes,
+couverture de l'image — et tombe à 0,52 sur le même cas.
+
+### Ce que disent les professeurs, et comment
+
+Les commentaires étaient assemblés à partir de sept registres — ouverture,
+constat, correction, menace, état de la position, principe, clôture — et
+recopiaient la notation du moteur : « Cg6 », « Td1 ». À l'écrit dans un
+rapport, cela se lit ; **dit à voix haute pendant une partie, c'est un
+exposé**, et la synthèse vocale écorche la notation.
+
+Deux règles commandent maintenant `parole.ts` :
+
+- **aucune notation à l'oral.** Le coup joué reste visible en notation dans la
+  carte de verdict, qui est un affichage et non une parole. La phrase parlée
+  nomme les pièces : « votre cavalier est en prise ; le fou était plus
+  utile ». Un filet de sécurité retire toute coordonnée qui se glisserait
+  malgré tout dans une phrase ;
+- **court.** Une réaction de deux ou trois mots dans la voix du professeur,
+  puis une phrase de fond. Rien d'autre, sauf quand la position est tranchée.
+
+La phrase de fond s'adapte au palier déclaré : un débutant s'entend dire
+« son cavalier attaque deux de vos pièces à la fois », un joueur avancé
+« vous vous exposez à une fourchette ». Le détail complet — variantes,
+complément technique, perte en centipions — appartient au rapport de fin de
+partie, qui se lit et se relit.
+
+Le texte affiché **est** ce qui est dit : chaque phrase est révélée au moment
+où elle est prononcée. Auparavant le texte s'écrivait en entier pendant que la
+voix disait les phrases une à une, et les deux ne correspondaient pas.
+
 ### Les voix des professeurs
 
 La synthèse vocale du navigateur a été essayée puis retirée. Elle est

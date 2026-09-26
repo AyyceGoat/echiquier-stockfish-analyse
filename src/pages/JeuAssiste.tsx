@@ -44,6 +44,9 @@ import { PortraitProfesseur } from '../ui/PortraitProfesseur.tsx';
 import {
   commentaireFinPartie,
   commentaireLocal,
+  repliqueGarder,
+  repliqueInterrompu,
+  repliqueReprise,
   issueDe,
   palierDuProfesseur,
   professeurParId,
@@ -419,6 +422,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
       .commenter(prof, {
         classement: verdict.classement,
         coupSan: uciVersSan(verdict.fenAvant, verdict.coupJoue) ?? verdict.coupJoue,
+        fenAvant: verdict.fenAvant,
         meilleurSan: verdict.meilleurSan,
         varianteSan: verdict.varianteSan,
         reponseAdverseSan: verdict.reponseAdverseSan,
@@ -430,11 +434,15 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
       })
       .then((texte) => {
         if (!vivant) return;
+        // Si le professeur parlait encore, il reconnaît le coup avant
+        // d'enchaîner : rester muet deux ou trois coups donnait l'impression
+        // qu'il avait décroché.
+        const prefixe = parleEncore.current ? `${repliqueInterrompu(prof, memoire.current)} ` : '';
         // Les tournures ne sont retenues QU'UNE FOIS le commentaire affiché :
         // un commentaire préparé puis abandonné — l'élève reprend son coup —
         // ne doit pas condamner ses tournures.
         retenirMemoire(prof.id, memoire.current);
-        setCommentaire(texte);
+        setCommentaire(prefixe + texte);
       });
     return () => {
       vivant = false;
@@ -499,110 +507,114 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
   }, [fin, finDite, configuree, prof, monCamp, partie.coups.length, reglages.niveauEleve]);
 
   /**
-   * Prise de parole : texte et voix, ensemble.
+   * Prise de parole : le texte affiché EST ce qui est dit.
    *
-   * Les deux étaient pilotés séparément, ce qui produisait trois défauts :
+   * Trois défauts réglés ensemble :
    *
-   *  - la voix arrivait deux à trois secondes après le texte, le temps de
-   *    résoudre l'audio, et parlait donc sur un texte déjà lu ;
-   *  - en jouant vite, la réplique précédente continuait pendant que la
-   *    suivante commençait : les paroles se chevauchaient ;
-   *  - le texte s'écrivait par-dessus lui-même quand deux commentaires se
-   *    succédaient de près.
+   *  - le texte s'écrivait en entier pendant que la voix disait les phrases
+   *    une à une : un paragraphe apparaissait, un autre disparaissait, et
+   *    l'écrit ne correspondait pas à l'oral ;
+   *  - jouer pendant que le professeur parlait le laissait muet deux ou trois
+   *    coups — la promesse d'une lecture interrompue ne se résolvait jamais,
+   *    puisque mettre en pause ne déclenche pas la fin de lecture ;
+   *  - les répliques se chevauchaient.
    *
-   * Un seul effet règle les trois. Il commence par invalider la réplique en
-   * cours — compteur de génération et coupure du lecteur —, attend l'audio,
-   * puis lance la frappe et le son au même instant. Si l'audio n'est pas prêt
-   * dans le délai imparti, le texte part seul : mieux vaut du silence qu'une
-   * voix en retard.
+   * On avance donc phrase par phrase : chaque phrase est révélée AU MOMENT où
+   * elle est dite. Sans voix, elle se révèle au rythme de la lecture.
    */
+  const generation = useRef(0);
+  const lecteurEnCours = useRef<HTMLAudioElement | null>(null);
+  const parleEncore = useRef(false);
+
   /**
-   * Attente maximale de l'audio avant d'écrire quand même.
+   * Attente maximale de l'audio avant d'afficher quand même.
    *
-   * Assez pour couvrir une lecture de fichier pré-généré, trop court pour
-   * qu'un blanc se remarque.
+   * Assez pour un fichier pré-généré, trop court pour qu'un blanc se
+   * remarque.
    */
   const DELAI_AVANT_TEXTE_MS = 900;
 
-  const generation = useRef(0);
-  const lecteurEnCours = useRef<HTMLAudioElement | null>(null);
-
   useEffect(() => {
     const mien = ++generation.current;
-    // Coupure NETTE de ce qui parlait encore.
-    lecteurEnCours.current?.pause();
-    lecteurEnCours.current = null;
+
+    // Coupure NETTE, et surtout immédiate.
+    const precedent = lecteurEnCours.current;
+    if (precedent) {
+      precedent.pause();
+      // On déclenche la fin à la main : `pause()` n'émet pas `ended`, et la
+      // boucle de lecture restait suspendue sur une promesse jamais tenue.
+      precedent.dispatchEvent(new Event('ended'));
+      lecteurEnCours.current = null;
+    }
 
     if (!commentaire) {
       setCommentaireAffiche('');
+      parleEncore.current = false;
       return;
     }
 
     const perime = () => generation.current !== mien;
+    const phrases = commentaire
+      .split(/(?<=[.!?…])\s+/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    const voix = reglages.voix ? reglages.voixProfesseurs?.[prof.id] : undefined;
+    const promesses = voix ? repliquesAudio(voix, commentaire) : [];
+    const reduit = matchMedia('(prefers-reduced-motion: reduce)').matches;
     let minuteurFrappe: number | undefined;
 
-    const ecrire = () => {
-      if (perime()) return;
-      if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        setCommentaireAffiche(commentaire);
-        return;
-      }
-      setCommentaireAffiche('');
-      let i = 0;
-      minuteurFrappe = window.setInterval(() => {
-        if (perime()) {
-          clearInterval(minuteurFrappe);
-          return;
+    /** Révèle une phrase, à la frappe ou d'un coup. */
+    const revelerPhrase = (avant: string, phrase: string) =>
+      new Promise<void>((fini) => {
+        if (reduit) {
+          setCommentaireAffiche(avant + phrase);
+          return fini();
         }
-        i += 1;
-        setCommentaireAffiche(commentaire.slice(0, i));
-        if (i >= commentaire.length) clearInterval(minuteurFrappe);
-      }, 18);
-    };
+        let i = 0;
+        minuteurFrappe = window.setInterval(() => {
+          if (perime()) {
+            clearInterval(minuteurFrappe);
+            return fini();
+          }
+          i += 1;
+          setCommentaireAffiche(avant + phrase.slice(0, i));
+          if (i >= phrase.length) {
+            clearInterval(minuteurFrappe);
+            fini();
+          }
+        }, 18);
+      });
 
-    const voix = reglages.voix ? reglages.voixProfesseurs?.[prof.id] : undefined;
-    if (!voix) {
-      setCommentaireAffiche('');
-      ecrire();
-      return () => {
-        clearInterval(minuteurFrappe);
-      };
-    }
-
-    // Le texte reste vide tant que l'audio n'est pas résolu : commencer à
-    // écrire puis attendre la voix est exactement ce qu'il fallait éviter.
-    setCommentaireAffiche('');
-    const promesses = repliquesAudio(voix, commentaire);
+    parleEncore.current = true;
     void (async () => {
-      // On n'attend que la PREMIÈRE phrase pour démarrer : les suivantes se
-      // résolvent pendant que celle-ci se dit.
-      //
-      // Et on ne l'attend pas indéfiniment. Mesuré sur le déploiement, une
-      // phrase à synthétiser laissait la carte du professeur VIDE plus d'une
-      // seconde et demie : l'élève voyait un blanc après son coup. Passé ce
-      // délai, le texte part seul et la réplique sera muette — c'est le
-      // compromis voulu, jamais de voix sur un texte déjà lu, jamais de
-      // silence visuel non plus.
-      await Promise.race([
-        promesses[0],
-        new Promise((r) => setTimeout(r, DELAI_AVANT_TEXTE_MS)),
-      ]);
-      if (perime()) return;
-      ecrire();
-      for (const promesse of promesses) {
+      let ecrit = '';
+      for (const [rang, phrase] of phrases.entries()) {
         if (perime()) return;
-        const url = await promesse;
+        const url = await Promise.race([
+          promesses[rang] ?? Promise.resolve(null),
+          // Première phrase : on ne fait attendre l'écran qu'un court instant.
+          // Les suivantes sont déjà résolues, l'audio ayant été demandé en
+          // parallèle dès le début.
+          new Promise<null>((r) => setTimeout(() => r(null), rang === 0 ? DELAI_AVANT_TEXTE_MS : 0)),
+        ]).catch(() => null);
         if (perime()) return;
-        if (!url) continue;
-        await new Promise<void>((fini) => {
-          if (perime()) return fini();
-          const lecteur = new Audio(url);
-          lecteurEnCours.current = lecteur;
-          lecteur.onended = () => fini();
-          lecteur.onerror = () => fini();
-          void lecteur.play().catch(() => fini());
-        });
+
+        const frappe = revelerPhrase(ecrit, phrase);
+        const son = url
+          ? new Promise<void>((fini) => {
+              const lecteur = new Audio(url);
+              lecteurEnCours.current = lecteur;
+              lecteur.addEventListener('ended', () => fini(), { once: true });
+              lecteur.addEventListener('error', () => fini(), { once: true });
+              void lecteur.play().catch(() => fini());
+            })
+          : Promise.resolve();
+        // La phrase suivante attend la plus lente des deux : on ne double
+        // jamais la voix, on ne la laisse jamais parler dans le vide.
+        await Promise.all([frappe, son]);
+        ecrit += phrase + ' ';
       }
+      if (!perime()) parleEncore.current = false;
     })();
 
     return () => {
@@ -617,6 +629,21 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
 
 
 
+  /**
+   * Réaction au choix de l'élève.
+   *
+   * Reprendre ou garder son coup remettait `verdict` à null, ce qui faisait
+   * repasser le professeur par la branche « pas de verdict » : il redisait
+   * bonjour au milieu de la partie. Il répond maintenant au choix.
+   */
+  const repondreAuChoix = useCallback(
+    (texte: string) => {
+      setCommentaire(texte);
+      retenirMemoire(prof.id, memoire.current);
+    },
+    [prof.id],
+  );
+
   const reprendreLeCoup = useCallback(() => {
     // Si le moteur a malgré tout déjà répondu, on remonte jusqu'à rendre
     // la main au joueur : reprendre doit toujours effacer le coup fautif.
@@ -625,7 +652,8 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
     }
     partie.annulerDernierCoup();
     setVerdict(null);
-  }, [monCamp, partie]);
+    repondreAuChoix(repliqueReprise(prof, memoire.current));
+  }, [monCamp, partie, prof, repondreAuChoix]);
 
   const demarrer = useCallback(
     (camp: 'w' | 'b') => {
@@ -881,41 +909,29 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
             </Carte>
           ) : verdictVisible && verdict ? (
             <Carte titre="Votre coup">
+              {/* Le strict nécessaire pendant la partie : l'étiquette du coup,
+                  et les deux boutons. La perte en pions, le meilleur coup en
+                  notation et la variante disaient en chiffres ce que le
+                  professeur vient de dire en français — et c'est le rapport de
+                  fin de partie qui doit porter le détail, pas l'écran de jeu. */}
               <p
                 className="titre text-lg font-semibold"
                 style={{ color: COULEURS[verdict.classement] }}
               >
                 {LIBELLES[verdict.classement]}
               </p>
-              {verdict.perteAffichee ? (
-                <p className="mt-0.5 text-xs text-[var(--color-texte-doux)]">
-                  {/* Accord réel plutôt qu'un « pion(s) » de formulaire :
-                      en français le singulier tient jusqu'à 2 exclu, donc
-                      « 0,62 pion » mais « 2,10 pions ». */}
-                  Perte : {verdict.perteAffichee.replace('−', '')}{' '}
-                  {Math.abs(verdict.perteCp) / 100 >= 2 ? 'pions' : 'pion'}
-                </p>
-              ) : null}
-
-              {mauvaisCoup && verdict.meilleurSan ? (
-                <div className="mt-3 rounded-xl bg-[var(--color-fond-3)] p-3">
-                  <p className="text-xs text-[var(--color-texte-doux)]">Il y avait mieux</p>
-                  <p className="chiffres mt-0.5 text-base font-semibold" style={{ color: 'var(--color-succes)' }}>
-                    {verdict.meilleurSan}
-                  </p>
-                  {verdict.varianteSan.length > 1 ? (
-                    <p className="mt-1 font-mono text-xs text-[var(--color-texte-doux)]">
-                      {verdict.varianteSan.join(' ')}
-                    </p>
-                  ) : null}
-                </div>
-              ) : null}
 
               {partie.surLeDernierCoup && !fin ? (
                 <>
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     <Bouton onClick={reprendreLeCoup}>Reprendre</Bouton>
-                    <Bouton variante="principal" onClick={() => setVerdict(null)}>
+                    <Bouton
+                      variante="principal"
+                      onClick={() => {
+                        setVerdict(null);
+                        repondreAuChoix(repliqueGarder(prof, memoire.current));
+                      }}
+                    >
                       Garder
                     </Bouton>
                   </div>
