@@ -42,7 +42,15 @@ export default defineConfig({
         // de l'ecran. Fetchees a ce moment-la elles arrivaient trop tard, et
         // les premieres prises de parole restaient muettes. Huit fichiers,
         // 130 Ko en tout : le cout est negligeable.
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2}', '**/profs/*-bouche-*.webp'],
+        globPatterns: [
+          '**/*.{js,css,html,svg,png,woff2}',
+          '**/profs/*-bouche-*.webp',
+          // Largeur réellement utilisée dans la liste des professeurs :
+          // quatre fichiers de 13 Ko. Les pré-cacher rend les visages
+          // instantanés dès la deuxième visite, alors qu'ils arrivaient
+          // après la liste déjà affichée.
+          '**/profs/*-320.webp',
+        ],
         // Les voix pré-générées ne sont PAS pré-cachées : une quarantaine de
         // mégaoctets à la première visite serait absurde alors qu'une partie
         // n'en consomme qu'une poignée. Elles sont mises en cache à l'usage,
