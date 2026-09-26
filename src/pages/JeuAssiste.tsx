@@ -39,7 +39,6 @@ import { formaterEvaluation, type Evaluation } from '../lib/uci.ts';
 import { Echiquier, type FlecheEchiquier } from '../ui/Echiquier.tsx';
 import { DialoguePromotion } from '../ui/DialoguePromotion.tsx';
 import { ListeCoups } from '../ui/ListeCoups.tsx';
-import { NiveauActif } from '../ui/ChoixNiveau.tsx';
 import { ChoixProfesseur } from '../ui/ChoixProfesseur.tsx';
 import { PortraitProfesseur } from '../ui/PortraitProfesseur.tsx';
 import {
@@ -51,7 +50,7 @@ import {
   salutationDe,
   type CoupMarquant,
 } from '../lib/professeurs.ts';
-import { ouvrirMemoire, retenirMemoire } from '../lib/memoirePhrases.ts';
+import { nouvellePartie, ouvrirMemoire, retenirMemoire } from '../lib/memoirePhrases.ts';
 import { repliquesAudio } from '../lib/voixAudio.ts';
 import {
   AffichageEval,
@@ -61,6 +60,7 @@ import {
   Carte,
   EnTetePage,
   Points,
+  Repliable,
   Segmente,
 } from '../ui/composants.tsx';
 import { Chess } from 'chess.js';
@@ -176,10 +176,24 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
     reglages.profondeurAnalyse ??
     Math.min(moteur.profil.profondeurParDefaut, PROFONDEUR_VERDICT_MOBILE);
 
+  /**
+   * Analyse d'accompagnement, BORNÉE en profondeur.
+   *
+   * Sans quatrième argument, la recherche est infinie : le moteur occupait
+   * donc ses threads pendant tout le temps de réflexion du joueur. Mesuré sur
+   * un format de téléphone, la profondeur montait de 13 à 25 en vingt
+   * secondes sans qu'aucun coup soit joué — deux cœurs à plein régime pour
+   * rien, et c'est ce qui faisait chauffer l'appareil.
+   *
+   * Bornée, la recherche s'arrête d'elle-même une fois la position évaluée.
+   * La profondeur retenue est celle du verdict : afficher une évaluation plus
+   * fine que celle qui servira à juger le coup n'apporterait rien.
+   */
   const analyse = useAnalyseContinue(
     monTour && !verdictEnCours ? fenCourante : null,
     monTour && !verdictEnCours,
     reglages.multiPV,
+    profondeurVerdict,
   );
 
   useEffect(() => {
@@ -485,72 +499,105 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
   }, [fin, finDite, configuree, prof, monCamp, partie.coups.length, reglages.niveauEleve]);
 
   /**
-   * Frappe du commentaire.
+   * Prise de parole : texte et voix, ensemble.
    *
-   * C'est elle qui définit la durée de parole : le halo s'allume tant que le
-   * texte s'écrit et s'éteint au dernier caractère, sans minuteur séparé qui
-   * pourrait se désynchroniser.
+   * Les deux étaient pilotés séparément, ce qui produisait trois défauts :
+   *
+   *  - la voix arrivait deux à trois secondes après le texte, le temps de
+   *    résoudre l'audio, et parlait donc sur un texte déjà lu ;
+   *  - en jouant vite, la réplique précédente continuait pendant que la
+   *    suivante commençait : les paroles se chevauchaient ;
+   *  - le texte s'écrivait par-dessus lui-même quand deux commentaires se
+   *    succédaient de près.
+   *
+   * Un seul effet règle les trois. Il commence par invalider la réplique en
+   * cours — compteur de génération et coupure du lecteur —, attend l'audio,
+   * puis lance la frappe et le son au même instant. Si l'audio n'est pas prêt
+   * dans le délai imparti, le texte part seul : mieux vaut du silence qu'une
+   * voix en retard.
    */
+  const generation = useRef(0);
+  const lecteurEnCours = useRef<HTMLAudioElement | null>(null);
+
   useEffect(() => {
+    const mien = ++generation.current;
+    // Coupure NETTE de ce qui parlait encore.
+    lecteurEnCours.current?.pause();
+    lecteurEnCours.current = null;
+
     if (!commentaire) {
       setCommentaireAffiche('');
       return;
     }
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      setCommentaireAffiche(commentaire);
-      return;
+
+    const perime = () => generation.current !== mien;
+    let minuteurFrappe: number | undefined;
+
+    const ecrire = () => {
+      if (perime()) return;
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        setCommentaireAffiche(commentaire);
+        return;
+      }
+      setCommentaireAffiche('');
+      let i = 0;
+      minuteurFrappe = window.setInterval(() => {
+        if (perime()) {
+          clearInterval(minuteurFrappe);
+          return;
+        }
+        i += 1;
+        setCommentaireAffiche(commentaire.slice(0, i));
+        if (i >= commentaire.length) clearInterval(minuteurFrappe);
+      }, 18);
+    };
+
+    const voix = reglages.voix ? reglages.voixProfesseurs?.[prof.id] : undefined;
+    if (!voix) {
+      setCommentaireAffiche('');
+      ecrire();
+      return () => {
+        clearInterval(minuteurFrappe);
+      };
     }
+
+    // Le texte reste vide tant que l'audio n'est pas résolu : commencer à
+    // écrire puis attendre la voix est exactement ce qu'il fallait éviter.
     setCommentaireAffiche('');
-    let i = 0;
-    const t = setInterval(() => {
-      i += 1;
-      setCommentaireAffiche(commentaire.slice(0, i));
-      if (i >= commentaire.length) clearInterval(t);
-    }, 18);
-    return () => clearInterval(t);
-  }, [commentaire]);
-
-  const parleEnCours = commentaire.length > 0 && commentaireAffiche.length < commentaire.length;
-
-  /**
-   * Voix du professeur, lancée en même temps que la frappe.
-   *
-   * La synthèse du navigateur a été retirée. Elle était mécanique, et surtout
-   * elle n'offre en pratique qu'une voix par genre : les quatre professeurs
-   * sonnaient comme deux personnes parlant à des vitesses différentes. On lit
-   * désormais des fichiers pré-générés avec des voix neuronales distinctes.
-   *
-   * Quand l'audio n'est pas disponible — voix non encore attribuée, phrase
-   * jamais synthétisée, réseau absent — le professeur reste SILENCIEUX. Le
-   * repli sur la voix du navigateur est un choix explicite contre lequel il a
-   * été tranché : mieux vaut rien qu'une voix désagréable.
-   */
-  useEffect(() => {
-    if (!reglages.voix || commentaire.length === 0) return;
-    const voix = reglages.voixProfesseurs?.[prof.id];
-    if (!voix) return;
-    let vivant = true;
-    let lecteur: HTMLAudioElement | null = null;
-    // Les phrases s'enchaînent : le commentaire est assemblé à partir de
-    // fragments qui sont chacun une phrase complète, et c'est à cette échelle
-    // que l'audio est pré-généré.
-    void repliquesAudio(voix, commentaire).then(async (urls) => {
-      for (const url of urls) {
-        if (!vivant) return;
+    const promesses = repliquesAudio(voix, commentaire);
+    void (async () => {
+      // On n'attend que la PREMIÈRE phrase pour démarrer : les suivantes se
+      // résolvent pendant que celle-ci se dit.
+      await promesses[0];
+      if (perime()) return;
+      ecrire();
+      for (const promesse of promesses) {
+        if (perime()) return;
+        const url = await promesse;
+        if (perime()) return;
         if (!url) continue;
         await new Promise<void>((fini) => {
-          lecteur = new Audio(url);
+          if (perime()) return fini();
+          const lecteur = new Audio(url);
+          lecteurEnCours.current = lecteur;
           lecteur.onended = () => fini();
           lecteur.onerror = () => fini();
           void lecteur.play().catch(() => fini());
         });
       }
-    });
+    })();
+
     return () => {
-      vivant = false;
-      lecteur?.pause();
+      clearInterval(minuteurFrappe);
+      lecteurEnCours.current?.pause();
+      lecteurEnCours.current = null;
     };
   }, [commentaire, reglages.voix, reglages.voixProfesseurs, prof.id]);
+
+
+  const parleEnCours = commentaire.length > 0 && commentaireAffiche.length < commentaire.length;
+
+
 
   const reprendreLeCoup = useCallback(() => {
     // Si le moteur a malgré tout déjà répondu, on remonte jusqu'à rendre
@@ -574,6 +621,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
       // forcerait le professeur à se répéter dès la deuxième.
       journal.current = [];
       salutation.current = null;
+      nouvellePartie(memoire.current);
       setFinDite(false);
       setEnregistree(false);
       setErreur(null);
@@ -706,7 +754,12 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div ref={zoneEchiquier}>
-          <div className="mx-auto flex w-full max-w-[min(88vw,62vh,34rem)] gap-2">
+          {/* L'échiquier occupe l'essentiel de l'écran : c'est lui qu'on est
+              venu voir. Les bornes précédentes — 88vw, 62vh, 34rem — le
+              reléguaient en haut de l'écran sur téléphone comme sur
+              ordinateur. La borne en hauteur laisse la place aux commandes et
+              au commentaire, rien de plus. */}
+          <div className="mx-auto flex w-full max-w-[min(97vw,72vh,44rem)] gap-2">
             <div className="flex-1">
               <Echiquier
                 fen={partie.fen}
@@ -754,8 +807,10 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
 
           {/* Voir PartieLibre : la hauteur est réservée pour que l'échiquier
               ne bouge pas quand l'indicateur apparaît. */}
-          <div className="mt-3 flex min-h-[1.875rem] flex-wrap items-center justify-center gap-x-3 gap-y-1">
-            <NiveauActif id={palier.id} />
+          {/* Une seule information sous l'échiquier : le professeur réfléchit.
+              Le badge de palier a été retiré — il répète un réglage déjà
+              choisi et encombre l'écran à chaque coup. */}
+          <div className="mt-2 flex min-h-[1.5rem] flex-wrap items-center justify-center gap-x-3 gap-y-1">
             {moteurReflechit || etatMoteur.etat === 'telechargement' || etatMoteur.etat === 'demarrage' ? (
               <span className="flex items-center gap-1.5 text-sm text-[var(--color-texte-doux)]">
                 {prof.nom} réfléchit
@@ -876,7 +931,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
             </Carte>
           ) : null}
 
-          <Carte titre="Analyse en direct">
+          <Repliable titre="Ce que voit l’ordinateur" apercu="Pour les curieux">
             {/* Même règle que la barre : les variantes sont calculées sur la
                 position courante et seraient traduites en notation contre une
                 position différente si l'on a remonté les coups. */}
@@ -912,16 +967,16 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
                 ))}
               </ol>
             )}
-          </Carte>
+          </Repliable>
 
-          <Carte titre="Coups">
+          <Repliable titre="Coups joués" apercu={`${partie.coups.length} demi-coups`}>
             <ListeCoups
               coups={partie.coupsSan.map((san) => ({ san }))}
               indexActif={partie.indexAffiche}
               onSelection={partie.aller}
               compacte
             />
-          </Carte>
+          </Repliable>
         </div>
       </div>
 

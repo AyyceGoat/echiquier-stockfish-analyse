@@ -153,8 +153,12 @@ export function choisirProfilMoteur(c: Capacites): ProfilMoteur {
     }
   }
 
-  // On laisse toujours un cœur au thread principal pour garder l'interface fluide.
-  const threadsMax = c.mobile ? 2 : 4;
+  // On laisse toujours un cœur au thread principal pour garder l'interface
+  // fluide. Sur téléphone, un SEUL thread de recherche : deux threads sur un
+  // appareil passivement refroidi font chauffer le boîtier sans rien apporter
+  // de perceptible à ce niveau de jeu, et la fréquence finit par être bridée,
+  // ce qui rend l'ensemble plus lent qu'avec un thread.
+  const threadsMax = c.mobile ? 1 : 4;
   const threads = peutMultithread ? Math.max(1, Math.min(threadsMax, c.coeurs - 1)) : 1;
 
   const hash = c.ios ? 16 : c.mobile ? 32 : c.memoireGo !== null && c.memoireGo <= 4 ? 32 : 128;
@@ -167,8 +171,8 @@ export function choisirProfilMoteur(c: Capacites): ProfilMoteur {
     variante: peutMultithread ? 'sf19' : 'monothread',
     threads,
     hash,
-    profondeurParDefaut: appareilLimite ? 14 : 18,
-    tempsParCoupMs: appareilLimite ? 250 : 500,
+    profondeurParDefaut: appareilLimite ? 12 : 18,
+    tempsParCoupMs: appareilLimite ? 200 : 500,
     raisonModeReduit: raison,
   };
 }

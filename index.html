@@ -33,6 +33,18 @@
       crossorigin
     />
 
+    <!--
+      Portraits des professeurs, préchargés dès le document.
+      Ils sont demandés par le premier écran de jeu, et les attendre faisait
+      apparaître les visages après coup, une fois la liste déjà affichée.
+      Quatre fichiers de 10 Ko à la largeur réellement utilisée dans la
+      liste : le coût est négligeable devant l'effet.
+    -->
+    <link rel="preload" href="/profs/homme-ultime-320.webp" as="image" type="image/webp" />
+    <link rel="preload" href="/profs/ephraim-320.webp" as="image" type="image/webp" />
+    <link rel="preload" href="/profs/johana-320.webp" as="image" type="image/webp" />
+    <link rel="preload" href="/profs/serena-320.webp" as="image" type="image/webp" />
+
     <title>Échiquier — Stockfish &amp; Analyse</title>
 
     <!--

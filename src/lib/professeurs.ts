@@ -703,7 +703,9 @@ function piocher<T>(liste: T[], graine: string): T {
  */
 function piocherNeuf(liste: string[], graine: string, memoire?: MemoirePhrases): string {
   if (liste.length === 0) return '';
-  const deja = memoire ? new Set([...memoire.dites, ...memoire.nouvelles]) : new Set<string>();
+  const deja = memoire
+    ? new Set([...memoire.dites, ...memoire.nouvelles, ...memoire.partie])
+    : new Set<string>();
   const restantes = liste.filter((t) => !deja.has(t));
   const choisie = piocher(restantes.length > 0 ? restantes : liste, graine);
   // On note la tournure retenue : c'est elle, et non le commentaire
@@ -786,7 +788,11 @@ export const commentaireLocal: MoteurCommentaire = {
     const motifAnodin = motif === 'passif' || motif === 'sans-consequence';
     const graveEtAnodin = (ctx.classement === 'gaffe' || ctx.classement === 'erreur') && motifAnodin;
 
-    if (ctx.classement === 'unique') {
+    if (ctx.classement === 'theorie' && motifAnodin) {
+      // L'ouverture a déjà tout dit : « c'est le livre ». Y ajouter « ce coup
+      // ne change pas l'appréciation de la position » allonge sans rien
+      // apprendre, et c'est le genre de remplissage qui se remarque.
+    } else if (ctx.classement === 'unique') {
       // Un coup forcé s'explique par l'absence d'alternative, pas par un
       // constat neutre du type « ne change pas l'appréciation ».
       morceaux.push(piocherNeuf(POURQUOI_UNIQUE[prof.id] ?? [], graine, deja));

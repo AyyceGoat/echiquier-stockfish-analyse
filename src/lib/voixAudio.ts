@@ -28,10 +28,11 @@ const FIGEES = manifeste as Record<string, string>;
 /**
  * Délai au-delà duquel on renonce et on se tait.
  *
- * Le commentaire s'écrit à l'écran pendant ce temps : une voix qui
- * démarrerait après coup parlerait sur un texte déjà lu.
+ * Le texte attend la voix plutôt que l'inverse : mieux vaut un instant de
+ * silence avant la réplique qu'une voix parlant sur un texte déjà lu. Le
+ * délai peut donc être plus généreux qu'il ne l'était.
  */
-const DELAI_MAX_MS = 2500;
+const DELAI_MAX_MS = 4000;
 
 interface SchemaVoix extends DBSchema {
   repliques: {
@@ -130,8 +131,13 @@ export function phrasesDe(texte: string): string[] {
  * Une phrase manquante devient `null` : elle est sautée à la lecture plutôt
  * que d'interrompre tout le commentaire.
  */
-export async function repliquesAudio(voix: string, texte: string): Promise<(string | null)[]> {
-  return Promise.all(phrasesDe(texte).map((p) => urlAudio(voix, p)));
+export function repliquesAudio(voix: string, texte: string): Promise<string | null>[] {
+  // Une promesse par phrase, RÉSOLUES EN PARALLÈLE mais consommées dans
+  // l'ordre. Attendre que toutes soient prêtes retardait la parole de tout le
+  // commentaire dès qu'une seule phrase devait être synthétisée — et sur
+  // téléphone, ce délai suffisait à ce que certaines répliques ne soient
+  // jamais dites.
+  return phrasesDe(texte).map((p) => urlAudio(voix, p));
 }
 
 /**

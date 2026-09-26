@@ -130,7 +130,30 @@ export function Repliable({
   children: ReactNode;
 }) {
   return (
-    <details className="group rounded-[var(--radius-md)] border border-[var(--color-bordure)]">
+    <details
+      className="group rounded-[var(--radius-md)] border border-[var(--color-bordure)]"
+      /*
+       * Recadrage à l'ouverture.
+       *
+       * Un bloc qu'on déplie pousse son contenu hors de l'écran, et il
+       * fallait faire défiler à la main pour le lire. On amène donc le bloc
+       * sous les yeux — sans brusquerie, et seulement s'il n'y est pas déjà,
+       * pour ne pas secouer la page quand il tient déjà en entier.
+       */
+      onToggle={(e) => {
+        const bloc = e.currentTarget;
+        if (!bloc.open) return;
+        requestAnimationFrame(() => {
+          const r = bloc.getBoundingClientRect();
+          const depasse = r.bottom > window.innerHeight || r.top < 0;
+          if (!depasse) return;
+          bloc.scrollIntoView({
+            behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+            block: 'nearest',
+          });
+        });
+      }}
+    >
       <summary className="cible-tactile flex cursor-pointer list-none items-center justify-between gap-3 rounded-[var(--radius-md)] px-3 py-2.5 text-sm transition-colors duration-[var(--t-rapide)] hover:bg-[var(--color-fond-3)] [&::-webkit-details-marker]:hidden">
         <span className="min-w-0">
           <span className="block font-medium">{titre}</span>
