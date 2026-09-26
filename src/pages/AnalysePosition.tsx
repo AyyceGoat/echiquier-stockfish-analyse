@@ -297,7 +297,7 @@ export function AnalysePosition({ naviguer }: { naviguer: (v: string) => void })
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]">
         <div ref={zoneEchiquier}>
-          <div className="mx-auto flex w-full max-w-[min(88vw,62vh,34rem)] gap-2">
+          <div className="mx-auto flex w-full max-w-[min(97vw,72vh,44rem)] gap-2">
             <div className="flex-1">
               <Echiquier
                 fen={partie.fen}

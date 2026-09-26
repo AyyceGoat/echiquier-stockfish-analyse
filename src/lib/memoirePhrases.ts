@@ -35,6 +35,15 @@ export interface MemoirePhrases {
   dites: string[];
   /** Tournures retenues pendant la génération en cours, à valider ensuite. */
   nouvelles: string[];
+  /**
+   * Tournures prononcées dans la PARTIE en cours.
+   *
+   * `dites` est borné et les plus anciennes en sortent : une tournure
+   * employée au début d'une longue partie pouvait donc revenir à la fin. Cet
+   * ensemble-ci n'est jamais rogné et se vide au début de chaque partie, ce
+   * qui garantit qu'une phrase dite ne revient pas dans la même partie.
+   */
+  partie: string[];
 }
 
 type Stockage = Record<string, string[]>;
@@ -68,7 +77,13 @@ function ecrireTout(tout: Stockage): void {
 
 /** Ouvre la mémoire d'un professeur, prête à être consultée et enrichie. */
 export function ouvrirMemoire(idProfesseur: string): MemoirePhrases {
-  return { dites: lireTout()[idProfesseur] ?? [], nouvelles: [] };
+  return { dites: lireTout()[idProfesseur] ?? [], nouvelles: [], partie: [] };
+}
+
+/** Oublie ce qui a été dit dans la partie écoulée, sans toucher au reste. */
+export function nouvellePartie(memoire: MemoirePhrases): void {
+  memoire.partie = [];
+  memoire.nouvelles = [];
 }
 
 /**
@@ -85,6 +100,7 @@ export function retenirMemoire(idProfesseur: string, memoire: MemoirePhrases): v
   tout[idProfesseur] = fusion.slice(-CAPACITE);
   ecrireTout(tout);
   memoire.dites = tout[idProfesseur];
+  memoire.partie = [...memoire.partie, ...memoire.nouvelles];
   memoire.nouvelles = [];
 }
 

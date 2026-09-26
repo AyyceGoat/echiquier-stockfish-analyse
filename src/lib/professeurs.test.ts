@@ -329,7 +329,7 @@ describe('absence de redite', () => {
     // fait l'écran de jeu.
     const coups = ['Cf3', 'e4', 'd4', 'Fb5', 'O-O', 'Te1', 'c3', 'h3', 'Cbd2', 'Cf1'];
     for (const p of PROFESSEURS) {
-      const memoire = { dites: [] as string[], nouvelles: [] as string[] };
+      const memoire = { dites: [] as string[], nouvelles: [] as string[], partie: [] as string[] };
       const ouvertures: string[] = [];
       const textes: string[] = [];
       for (const coupSan of coups) {
@@ -346,6 +346,7 @@ describe('absence de redite', () => {
           }),
         );
         memoire.dites.push(...memoire.nouvelles);
+        memoire.partie.push(...memoire.nouvelles);
         memoire.nouvelles = [];
         textes.push(t);
         ouvertures.push(t.split(/(?<=[.!?…])\s/)[0]);
@@ -420,11 +421,12 @@ describe('fin de partie', () => {
 
   it('ne répète pas la même conclusion d’une partie à l’autre', () => {
     for (const p of PROFESSEURS) {
-      const memoire = { dites: [] as string[], nouvelles: [] as string[] };
+      const memoire = { dites: [] as string[], nouvelles: [] as string[], partie: [] as string[] };
       const vus = new Set<string>();
       for (let partie = 0; partie < 5; partie++) {
         const t = commentaireFinPartie(p, finDe({ issue: 'victoire', nbCoups: 30 + partie, memoire }));
         memoire.dites.push(...memoire.nouvelles);
+        memoire.partie.push(...memoire.nouvelles);
         memoire.nouvelles = [];
         vus.add(t);
       }
@@ -436,11 +438,12 @@ describe('fin de partie', () => {
 describe('salutationDe', () => {
   it('ne redonne pas le même accueil de partie en partie', () => {
     for (const p of PROFESSEURS) {
-      const memoire = { dites: [] as string[], nouvelles: [] as string[] };
+      const memoire = { dites: [] as string[], nouvelles: [] as string[], partie: [] as string[] };
       const vues = new Set<string>();
       for (let i = 0; i < 8; i++) {
         vues.add(salutationDe(p, memoire));
         memoire.dites.push(...memoire.nouvelles);
+        memoire.partie.push(...memoire.nouvelles);
         memoire.nouvelles = [];
       }
       expect(vues.size, p.id).toBe(8);

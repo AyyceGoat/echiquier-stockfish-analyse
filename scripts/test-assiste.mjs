@@ -76,8 +76,6 @@ async function jouer(depuis, vers) {
     }
   };
   verifierDansLEcran('départ', a);
-  await page.mouse.click(a.x, a.y);
-  await new Promise((r) => setTimeout(r, 250));
 
   // L'échiquier est remesuré entre les deux appuis : une bannière qui
   // disparaît au-dessus de lui le déplacerait, et le second appui tomberait
@@ -93,7 +91,14 @@ async function jouer(depuis, vers) {
     y: boite2.y + ((noires ? rang : 7 - rang) + 0.5) * boite2.c,
   };
   verifierDansLEcran('arrivée', b);
-  await page.mouse.click(b.x, b.y);
+  // Glisser plutôt que deux clics : Chessground traite le glisser-déposer
+  // nativement, alors que la sélection en deux temps se perd dès qu'un rendu
+  // intervient entre les deux appuis — ce qui arrive maintenant que le
+  // commentaire attend son audio avant de s'afficher.
+  await page.mouse.move(a.x, a.y);
+  await page.mouse.down();
+  await page.mouse.move(b.x, b.y, { steps: 6 });
+  await page.mouse.up();
   await new Promise((r) => setTimeout(r, 400));
 }
 
@@ -105,7 +110,10 @@ async function jouer(depuis, vers) {
 let coupJoue = false;
 for (let essai = 1; essai <= 2 && !coupJoue; essai++) {
   await jouer('a2', 'a4');
-  coupJoue = await page.evaluate(() => document.body.innerText.includes('a4'));
+  // `textContent` et non `innerText` : la liste des coups est repliée par
+  // défaut, donc absente du texte RENDU alors qu'elle est bien dans le
+  // document. Lire le rendu faisait croire que le coup n'avait pas été joué.
+  coupJoue = await page.evaluate(() => (document.body.textContent ?? '').includes('a4'));
   if (!coupJoue) await new Promise((r) => setTimeout(r, 1500));
 }
 verifier(coupJoue, 'Le coup a été enregistré sur l’échiquier');
@@ -142,7 +150,9 @@ await page.screenshot({ path: 'captures/assiste-verdict.png' });
 verifier(await cliquer("(t) => t === 'Reprendre'"), 'Clic sur Reprendre');
 await new Promise((r) => setTimeout(r, 2500));
 const repris = await page.evaluate(() => ({
-  listeVide: document.body.innerText.includes('Aucun coup joué'),
+  // Même raison que plus haut : la liste des coups est repliée, son contenu
+  // n'apparaît donc pas dans le texte rendu.
+  listeVide: (document.body.textContent ?? '').includes('Aucun coup joué'),
   texte: document.body.innerText.slice(0, 200),
 }));
 verifier(repris.listeVide, 'Le coup a bien été repris');

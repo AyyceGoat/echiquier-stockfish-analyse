@@ -87,7 +87,14 @@ export function Echiquier({
   animations = true,
   onCoup,
   onClicCase,
-  tailleMax = 'min(88vw, 62vh, 34rem)',
+  /*
+   * L'échiquier occupe l'essentiel de l'écran par défaut.
+   *
+   * Les bornes précédentes — 88vw, 62vh, 34rem — le laissaient petit et
+   * relégué en haut, sur téléphone comme sur ordinateur. La borne en hauteur
+   * garde la place des commandes et du commentaire, rien de plus.
+   */
+  tailleMax = 'min(97vw, 72vh, 44rem)',
   revision = 0,
 }: ProprietesEchiquier) {
   const conteneur = useRef<HTMLDivElement>(null);
