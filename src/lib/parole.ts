@@ -143,7 +143,25 @@ const SIMPLE: NiveauEleve[] = ['decouverte', 'debutant'];
  * avancé, on peut nommer le motif — « clouage », « fourchette » — parce que
  * le mot lui parle et abrège la phrase.
  */
+function majuscule(t: string): string {
+  return t.length === 0 ? t : t[0].toUpperCase() + t.slice(1);
+}
+
+/**
+ * La phrase de fond, TOUJOURS capitalisée.
+ *
+ * Elle l'était auparavant au dernier moment, par `sansCoordonnees`, une fois
+ * le commentaire assemblé. Les fichiers audio, eux, étaient pré-générés à
+ * partir de la forme brute en minuscule : l'empreinte ne correspondait donc
+ * pas, et la phrase repartait en synthèse à la demande — avec son délai, et
+ * son silence possible. Ce qu'on dit et ce qu'on a enregistré doivent être le
+ * même texte, au caractère près.
+ */
 export function phraseDeFond(c: ContenuParle): string {
+  return majuscule(phraseBrute(c));
+}
+
+function phraseBrute(c: ContenuParle): string {
   const simple = SIMPLE.includes(c.eleve);
   const sujet = c.coup?.sujet ?? 'cette pièce';
   /**
