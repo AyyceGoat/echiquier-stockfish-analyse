@@ -516,6 +516,14 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
    * dans le délai imparti, le texte part seul : mieux vaut du silence qu'une
    * voix en retard.
    */
+  /**
+   * Attente maximale de l'audio avant d'écrire quand même.
+   *
+   * Assez pour couvrir une lecture de fichier pré-généré, trop court pour
+   * qu'un blanc se remarque.
+   */
+  const DELAI_AVANT_TEXTE_MS = 900;
+
   const generation = useRef(0);
   const lecteurEnCours = useRef<HTMLAudioElement | null>(null);
 
@@ -568,7 +576,17 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
     void (async () => {
       // On n'attend que la PREMIÈRE phrase pour démarrer : les suivantes se
       // résolvent pendant que celle-ci se dit.
-      await promesses[0];
+      //
+      // Et on ne l'attend pas indéfiniment. Mesuré sur le déploiement, une
+      // phrase à synthétiser laissait la carte du professeur VIDE plus d'une
+      // seconde et demie : l'élève voyait un blanc après son coup. Passé ce
+      // délai, le texte part seul et la réplique sera muette — c'est le
+      // compromis voulu, jamais de voix sur un texte déjà lu, jamais de
+      // silence visuel non plus.
+      await Promise.race([
+        promesses[0],
+        new Promise((r) => setTimeout(r, DELAI_AVANT_TEXTE_MS)),
+      ]);
       if (perime()) return;
       ecrire();
       for (const promesse of promesses) {
