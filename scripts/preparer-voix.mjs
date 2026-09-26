@@ -101,6 +101,25 @@ export function empreinte(voix, texte, debit = '+0%', hauteur = '+0Hz') {
  */
 export async function synthetiser(voix, texte, sortie, { debit = '+0%', hauteur = '+0Hz' } = {}) {
   if (existsSync(sortie)) return { genere: false, sortie };
+  // Le service coupe parfois la connexion en cours de série — mille cinq
+  // cents synthèses d'affilée finissent par en croiser une. Sans reprise, un
+  // seul délai réseau emportait toute la génération, et il fallait tout
+  // relancer à la main.
+  let derniere;
+  for (let essai = 1; essai <= 4; essai++) {
+    try {
+      return await synthetiserUneFois(voix, texte, sortie, { debit, hauteur });
+    } catch (e) {
+      derniere = e;
+      // Attente croissante : une coupure isolée se résout tout de suite, une
+      // limitation de débit demande de lever le pied.
+      await new Promise((r) => setTimeout(r, essai * 1500));
+    }
+  }
+  throw derniere;
+}
+
+async function synthetiserUneFois(voix, texte, sortie, { debit, hauteur }) {
   await executer(
     'python',
     [
@@ -270,14 +289,21 @@ async function figees(voixDemandees) {
 
   let generees = 0;
   let dejaLa = 0;
+  const echouees = [];
   for (const voix of attribution) {
     for (const [i, texte] of phrases.entries()) {
       const cle = empreinte(voix, texte);
       const fichier = `${dossier}/${cle}.mp3`;
-      const { genere } = await synthetiser(voix, texte, fichier);
-      manifeste[cle] = `/voix/figees/${cle}.mp3`;
-      if (genere) generees += 1;
-      else dejaLa += 1;
+      try {
+        const { genere } = await synthetiser(voix, texte, fichier);
+        manifeste[cle] = `/voix/figees/${cle}.mp3`;
+        if (genere) generees += 1;
+        else dejaLa += 1;
+      } catch (e) {
+        // Une phrase perdue n'emporte pas la série : elle passera par la
+        // synthèse à la demande, et un nouveau passage la rattrapera.
+        echouees.push(`${voix} · ${texte.slice(0, 40)} — ${String(e?.message ?? e).slice(0, 60)}`);
+      }
       if ((i + 1) % 25 === 0) {
         process.stdout.write(`
   ${voix} : ${i + 1}/${phrases.length}`);
