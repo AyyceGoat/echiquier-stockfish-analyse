@@ -20,10 +20,23 @@
  */
 
 import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
-import manifeste from './voixManifeste.json';
 
-/** Association empreinte → fichier livré, produite par `npm run voix`. */
-const FIGEES = manifeste as Record<string, string>;
+/**
+ * Association empreinte → fichier livré, produite par `npm run voix`.
+ *
+ * Chargée À LA DEMANDE plutôt qu'importée : les 1 468 entrées pèsent 105 Ko,
+ * et les embarquer dans le bundle les plaçait sur le chemin critique de
+ * l'écran de jeu, retardant l'apparition de l'échiquier pour une donnée qui
+ * ne sert qu'à la première réplique.
+ */
+let promesseFigees: Promise<Record<string, string>> | null = null;
+
+function figees(): Promise<Record<string, string>> {
+  promesseFigees ??= fetch('/voix/manifeste.json')
+    .then((r) => (r.ok ? r.json() : {}))
+    .catch(() => ({}));
+  return promesseFigees;
+}
 
 /**
  * Délai au-delà duquel on renonce et on se tait.
@@ -157,7 +170,7 @@ export async function urlAudio(voix: string, texte: string): Promise<string | nu
   }
 
   // 1. Pré-généré et livré.
-  const figee = FIGEES[cle];
+  const figee = (await figees())[cle];
   if (figee) return figee;
 
   // 2. Déjà entendu.
