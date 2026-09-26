@@ -225,7 +225,13 @@ async function figees(voixDemandees) {
   ${voix} : ${phrases.length}/${phrases.length} ✓`);
     // Le manifeste est réécrit après chaque voix : une interruption ne perd
     // pas le travail déjà fait.
-    writeFileSync('src/lib/voixManifeste.json', JSON.stringify(manifeste, null, 0));
+    // Deux copies : l'une pour les tests, l'autre servie au navigateur. Le
+    // manifeste n'est pas importé par le bundle — 105 Ko sur le chemin
+    // critique de l'écran de jeu pour une donnée qui ne sert qu'à la
+    // première réplique.
+    const rendu = JSON.stringify(manifeste, null, 0);
+    writeFileSync('src/lib/voixManifeste.json', rendu);
+    writeFileSync('public/voix/manifeste.json', rendu);
   }
 
   console.log(`
