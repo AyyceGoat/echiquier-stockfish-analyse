@@ -9,11 +9,15 @@
  * Aucun appel payant n'est émis ici : sans `ANTHROPIC_API_KEY` dans
  * l'environnement et sans clé utilisateur, la fonction rend 401 — mais APRÈS
  * avoir consommé le quota. C'est exactement l'ordre qu'on veut vérifier.
+ *
+ * Le fichier vit hors de `netlify/functions` : tout `.mjs` de ce dossier est
+ * traité comme une fonction à déployer, et le `await` de haut niveau de ce test
+ * faisait échouer l'empaquetage de tout le site.
  */
 
 import { describe, expect, it, beforeEach } from 'vitest';
 
-const handler = (await import('./reconnaitre.mjs')).default;
+const handler = (await import('../functions/reconnaitre.mjs')).default;
 
 /** Une requête de lecture, avec l'adresse d'appelant qu'on veut. */
 const requete = (ip, image = 'x'.repeat(200)) =>
