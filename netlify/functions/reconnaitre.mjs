@@ -233,21 +233,88 @@ function adresseDe(req) {
   return 'inconnue';
 }
 
-/** Incrémente un compteur et rend sa valeur après incrément. */
+/** Par où passe le comptage, et pourquoi. Renseigné au premier appel. */
+let supportQuota = 'inconnu';
+
+/**
+ * Incrémente un compteur et rend sa valeur après incrément.
+ *
+ * Deux compteurs, et on retient le plus élevé des deux.
+ *
+ * Le magasin partagé est écrit en lecture-modification-écriture CONDITIONNELLE :
+ * `onlyIfMatch` sur l'étiquette lue refuse l'écriture si quelqu'un est passé
+ * entre-temps, et on relit. Sans cela, une rafale perdait des incréments — le
+ * magasin est à cohérence différée, la relecture rendait une valeur périmée, et
+ * vingt-quatre appels d'affilée n'en comptaient que six. Un plafond qui
+ * sous-compte pendant une rafale ne protège rien, et c'est exactement le moment
+ * où il devrait protéger.
+ *
+ * Le compteur en mémoire reste tenu en parallèle : il est exact sur une instance
+ * chaude, qui est précisément ce qui sert une rafale venant d'une seule adresse.
+ * Le maximum des deux est donc plus juste que l'un ou l'autre.
+ */
 async function incrementer(cle) {
+  const local = (enMemoire.get(cle) ?? 0) + 1;
+  enMemoire.set(cle, local);
+  if (enMemoire.size > 5000) enMemoire.clear();
+
   try {
     const { getStore } = await import('@netlify/blobs');
     const magasin = getStore('quotas-reconnaissance');
-    const actuel = Number((await magasin.get(cle)) ?? 0);
-    const suivant = actuel + 1;
-    await magasin.set(cle, String(suivant));
-    return suivant;
-  } catch {
-    const suivant = (enMemoire.get(cle) ?? 0) + 1;
-    enMemoire.set(cle, suivant);
-    // La carte ne doit pas grossir indéfiniment sur une instance qui vit.
-    if (enMemoire.size > 5000) enMemoire.clear();
-    return suivant;
+    let partage = local;
+    for (let essai = 0; essai < 4; essai++) {
+      const lu = await magasin.getWithMetadata(cle, { type: 'text' });
+      const actuel = Number(lu?.data ?? 0) || 0;
+      partage = actuel + 1;
+      const options = lu?.etag ? { onlyIfMatch: lu.etag } : { onlyIfNew: true };
+      const ecrit = await magasin.set(cle, String(partage), options);
+      // `modified` à faux : une autre invocation a écrit entre la lecture et
+      // l'écriture. On relit plutôt que d'écraser son incrément.
+      if (ecrit?.modified !== false) break;
+    }
+    supportQuota = 'blobs';
+    return Math.max(partage, local);
+  } catch (e) {
+    // Le repli ne doit pas être silencieux : un compteur en mémoire ne survit
+    // pas à un démarrage à froid, et c'est exactement ce qu'il faut savoir.
+    if (supportQuota !== 'memoire') {
+      supportQuota = 'memoire';
+      console.warn('Quotas en mémoire seulement :', String(e?.message ?? e).slice(0, 120));
+    }
+    return local;
+  }
+}
+
+/**
+ * État du comptage, pour le diagnostic.
+ *
+ * Un plafond qui ne compte pas ne protège rien, et cela ne se voit pas de
+ * l'extérieur : les requêtes passent, simplement. Le diagnostic dit donc par
+ * où passe le compteur et où en est la fenêtre courante.
+ */
+async function sondeQuota(req) {
+  const f = fenetre();
+  try {
+    const { getStore } = await import('@netlify/blobs');
+    const magasin = getStore('quotas-reconnaissance');
+    const site = Number((await magasin.get(`site:${f}`)) ?? 0) || 0;
+    const mien = Number((await magasin.get(`ip:${adresseDe(req)}:${f}`)) ?? 0) || 0;
+    // Le compte de l'appelant, pas celui des autres : une adresse n'est jamais
+    // publiée, seulement le nombre de lectures qu'il reste à celui qui demande.
+    return {
+      quotas: 'blobs',
+      consomme: site,
+      plafond: LIMITE_SITE,
+      mesLectures: mien,
+      monPlafond: LIMITE_IP,
+    };
+  } catch (e) {
+    return {
+      quotas: 'memoire',
+      cause: String(e?.message ?? e).slice(0, 80),
+      plafond: LIMITE_SITE,
+      monPlafond: LIMITE_IP,
+    };
   }
 }
 
@@ -293,6 +360,7 @@ export default async function handler(req) {
     // variables ni de fragment de clé sur un point d'entrée ouvert.
     if (url.searchParams.get('diagnostic') === '1') {
       reponse.passerelle = Boolean(process.env.ANTHROPIC_BASE_URL);
+      Object.assign(reponse, await sondeQuota(req));
     }
     return reponseJson(reponse);
   }

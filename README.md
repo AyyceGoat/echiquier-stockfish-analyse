@@ -475,10 +475,24 @@ Quatre garde-fous, dans l'ordre où ils s'appliquent :
 Le contrôle d'origine ne suffit pas, et c'est la raison des plafonds : un en-tête
 `Origin` se falsifie en une ligne de `curl`. Seul un compteur borne la dépense.
 Il vit dans Netlify Blobs, donc partagé par toutes les instances de la fonction,
-et retombe sur un compteur en mémoire quand le magasin est indisponible —
-exécution locale, script de diagnostic. Les écritures ne sont pas atomiques :
-pour un garde-fou de coût, une course qui laisse passer un appel de trop est sans
+et un second compteur est tenu en mémoire par instance.
+
+**Les deux sont nécessaires, et c'est une mesure qui l'a montré.** Le magasin est
+à cohérence différée : une lecture-modification-écriture naïve perdait des
+incréments pendant une rafale — vingt-quatre appels d'affilée n'en comptaient que
+six, et le plafond ne se déclenchait jamais. L'écriture est donc conditionnelle
+(`onlyIfMatch` sur l'étiquette lue, quatre tentatives), ce qui fait remonter la
+précision à neuf incréments comptés sur dix, mesuré sur le site déployé. Le
+compteur en mémoire couvre le reste : il est exact sur une instance chaude, qui
+est précisément ce qui sert une rafale venant d'une seule adresse. On retient le
+plus élevé des deux. La limite se déclenche donc entre vingt et vingt-deux
+lectures plutôt qu'exactement à vingt — pour un garde-fou de coût, c'est sans
 conséquence.
+
+`GET /api/reconnaitre?diagnostic=1` dit par où passe le comptage et où en est la
+fenêtre courante, pour l'appelant et pour le site. C'est ce point d'entrée qui a
+révélé que le plafond ne comptait pas : de l'extérieur, un plafond en panne ne se
+voit pas — les requêtes passent, simplement.
 
 **L'ordre compte.** Ce qui ne coûte rien se vérifie d'abord — méthode, origine,
 plafonds, forme du corps, taille de l'image — et la clé en dernier, juste avant

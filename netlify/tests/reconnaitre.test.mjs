@@ -93,8 +93,15 @@ describe('surface du point d’entrée', () => {
     );
     const corps = await r.json();
     expect(r.status).toBe(200);
-    // Des booléens et un nom de modèle, rien d'autre.
-    expect(Object.keys(corps).sort()).toEqual(['cleServeur', 'modele', 'passerelle']);
-    expect(JSON.stringify(corps)).not.toMatch(/sk-ant|ANTHROPIC/);
+    // Des booléens, un nom de modèle et l'état du comptage — rien d'autre.
+    expect(Object.keys(corps).sort()).toEqual(
+      ['cleServeur', 'cause', 'consomme', 'mesLectures', 'modele', 'monPlafond', 'passerelle', 'plafond', 'quotas']
+        .filter((c) => c in corps)
+        .sort(),
+    );
+    expect(JSON.stringify(corps)).not.toMatch(/sk-ant|ANTHROPIC_/);
+    // Le diagnostic doit dire par où passe le compteur : un plafond qui ne
+    // compte pas ne protège rien, et cela ne se voit pas autrement.
+    expect(corps.quotas).toMatch(/^(blobs|memoire)$/);
   });
 });
