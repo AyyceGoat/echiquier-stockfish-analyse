@@ -423,6 +423,25 @@ describe('le rythme commande la longueur', () => {
     }
   });
 
+  it('ne redit pas la même phrase même quand elle vient d’un autre registre', async () => {
+    // « Bien. » figure dans les acquiescements ET dans les réactions neutres :
+    // le garde par registre laissait passer deux « Bien. » de suite, un de
+    // chaque liste. Le joueur n'entend pas des registres, il entend une voix.
+    for (const p of PROFESSEURS) {
+      reinitialiserRythme();
+      const suite: string[] = [];
+      for (let i = 0; i < 12; i++) {
+        const t =
+          i % 2 === 0
+            ? await commentaireLocal.commenter(p, ctxRythme('tresRapide', 'excellent'))
+            : await commentaireLocal.commenter(p, ctxRythme('rapide', 'theorie'));
+        if (t !== '') suite.push(t);
+      }
+      const colles = suite.filter((t, i) => i > 0 && t === suite[i - 1]);
+      expect(colles, `${p.id} : ${JSON.stringify(suite)}`).toEqual([]);
+    }
+  });
+
   it('une faute rend la parole au professeur, même en pleine série', async () => {
     for (const p of PROFESSEURS) {
       reinitialiserRythme();

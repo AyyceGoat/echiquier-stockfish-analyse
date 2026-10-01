@@ -61,8 +61,6 @@ const CAS = [
   },
 ];
 
-const nav = await puppeteer.launch(optionsLancement({ protocolTimeout: 300_000 }));
-
 /** Texte affiché dans la carte du professeur. */
 const lireTexte = (page) =>
   page.evaluate(() => {
@@ -83,7 +81,11 @@ const lireTexte = (page) =>
  * deux relevés identiques ne suffisent pas, la frappe marque une pause entre
  * deux phrases. On exige donc plusieurs relevés de suite sans changement.
  */
-async function texteStable(page, { different = null, minimum = 20, stables = 4, pas = 500, tours = 90 } = {}) {
+// Deux cents tours de 500 ms, soit cent secondes : sur un site déployé, la
+// première analyse attend le téléchargement du moteur — sept mégaoctets — et
+// quarante-cinq secondes ne suffisaient pas. En local la boucle sort en deux
+// secondes, le budget large ne coûte donc rien.
+async function texteStable(page, { different = null, minimum = 20, stables = 4, pas = 500, tours = 200 } = {}) {
   let dernier = null;
   let identiques = 0;
   for (let i = 0; i < tours; i++) {
@@ -106,14 +108,47 @@ function centre(rect, caseSan) {
 }
 
 for (const cas of CAS) {
+  // Un navigateur par cas, et non un onglet de plus.
+  //
+  // Sur le site déployé, les onglets suivants sont servis par le service
+  // worker et le glisser-déposer n'y prenait plus : le coup tombait dans le
+  // vide, sans verdict, trois tentatives de suite. Trois lancements coûtent
+  // quelques secondes et rendent le résultat lisible.
+  const nav = await puppeteer.launch(optionsLancement({ protocolTimeout: 300_000 }));
   const page = await nav.newPage();
   await page.setViewport({ width: 1280, height: 900 });
 
-  // La position se transmet par `sessionStorage`, exactement comme le fait
-  // l'écran d'analyse quand on demande « jouer depuis cette position ».
-  await page.goto(`${BASE}/#/`, { waitUntil: 'networkidle2' });
-  await page.evaluate((fen) => sessionStorage.setItem('echiquier.position-a-jouer', fen), cas.fen);
+  /**
+   * La position se transmet par `sessionStorage`, exactement comme le fait
+   * l'écran d'analyse quand on demande « jouer depuis cette position ».
+   *
+   * L'ORDRE compte, et c'est lui qui rendait ce test imprévisible. L'écran de
+   * jeu CONSOMME la clé à son montage : il la lit et l'effface. Déposer la
+   * position puis naviguer vers `#/assiste` — un simple changement de fragment,
+   * donc sans rechargement — puis recharger, c'était jouer à la course contre
+   * le montage de React. S'il avait eu le temps de monter, la clé était déjà
+   * consommée et le rechargement repartait de la position initiale : le coup
+   * du scénario devenait illégal et aucun glisser ne pouvait le faire passer.
+   *
+   * On charge donc l'écran de jeu D'ABORD, on dépose ensuite, et le
+   * rechargement est le seul montage qui lit la clé.
+   */
   await page.goto(`${BASE}/#/assiste`, { waitUntil: 'networkidle2' });
+  // Voix coupée : ce test porte sur le TEXTE. Avec la voix, chaque phrase
+  // attend la fin de son audio avant que la suivante s'écrive, et la pause
+  // entre deux phrases dépasse n'importe quelle fenêtre de stabilité — le test
+  // lisait alors la première phrase en croyant lire la réplique entière.
+  await page.evaluate((fen) => {
+    const cle = 'echiquier.reglages.v1';
+    let r = {};
+    try {
+      r = JSON.parse(localStorage.getItem(cle) ?? '{}');
+    } catch {
+      r = {};
+    }
+    localStorage.setItem(cle, JSON.stringify({ ...r, voix: false }));
+    sessionStorage.setItem('echiquier.position-a-jouer', fen);
+  }, cas.fen);
   await page.reload({ waitUntil: 'networkidle2' });
 
   await page.waitForFunction(
@@ -132,10 +167,6 @@ for (const cas of CAS) {
   );
   await page.evaluate(() => window.scrollTo(0, 0));
 
-  const rect = await page.evaluate(() => {
-    const r = document.querySelector('cg-board').getBoundingClientRect();
-    return { left: r.left, top: r.top, width: r.width };
-  });
   // Le texte d'accueil est relevé AVANT le coup : c'est le seul repère fiable
   // pour savoir qu'un verdict a remplacé la salutation. Le reconnaître par
   // une liste de phrases devenait faux dès qu'on enrichissait les registres.
@@ -144,22 +175,76 @@ for (const cas of CAS) {
   // et la salutation complète paraissait ensuite « différente de l'accueil » —
   // le test lisait l'accueil en croyant lire le verdict.
   const accueil = await texteStable(page);
+  console.log(`  (${cas.nom}) accueil relevé : « ${accueil.slice(0, 60)} »`);
 
-  const a = centre(rect, cas.coup[0]);
-  const b = centre(rect, cas.coup[1]);
-  // Glisser plutôt que deux clics : Chessground traite le glisser-déposer
-  // nativement, et la sélection en deux temps se perdait quand un rendu
-  // intervenait entre les deux clics.
-  await page.mouse.move(a.x, a.y);
-  await page.mouse.down();
-  await page.mouse.move(b.x, b.y, { steps: 6 });
-  await page.mouse.up();
+  /**
+   * Glisser plutôt que deux clics : Chessground traite le glisser-déposer
+   * nativement, et la sélection en deux temps se perdait quand un rendu
+   * intervenait entre les deux clics.
+   *
+   * Les coordonnées du plateau sont relues JUSTE AVANT le glisser. Relevées
+   * plus tôt, elles vieillissaient : la carte du professeur grandit pendant
+   * que la salutation s'écrit, l'échiquier descend, et le glisser tombait à
+   * côté de la pièce — sans que rien ne le signale.
+   */
+  const glisser = async (parClics) => {
+    const rect = await page.evaluate(() => {
+      const r = document.querySelector('cg-board').getBoundingClientRect();
+      return { left: r.left, top: r.top, width: r.width };
+    });
+    const a = centre(rect, cas.coup[0]);
+    const b = centre(rect, cas.coup[1]);
+    // Une tentative sur deux passe par deux clics. Les deux gestes échouent
+    // pour des raisons différentes — un glisser trop rapide pour Chessground,
+    // une sélection perdue par un rendu entre les deux clics — et répéter le
+    // même geste raté le rate de la même façon.
+    if (parClics) {
+      await page.mouse.click(a.x, a.y);
+      await page.evaluate(() => new Promise((r) => setTimeout(r, 250)));
+      await page.mouse.click(b.x, b.y);
+      return;
+    }
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    await page.mouse.move((a.x + b.x) / 2, (a.y + b.y) / 2, { steps: 4 });
+    await page.mouse.move(b.x, b.y, { steps: 4 });
+    await page.mouse.up();
+  };
 
-  // Tant que le texte est celui de l'accueil, aucun verdict n'a été rendu : on
-  // lirait la mauvaise réplique. Aucun seuil de longueur non plus — depuis que
-  // la parole est passée au langage humain, une réplique complète tient souvent
-  // en une phrase, et le seuil de soixante caractères attendait indéfiniment un
-  // exposé qui ne vient plus.
+  /**
+   * Tant que le texte est celui de l'accueil, aucun verdict n'a été rendu : on
+   * lirait la mauvaise réplique. Aucun seuil de longueur non plus — depuis que
+   * la parole est passée au langage humain, une réplique complète tient souvent
+   * en une phrase, et le seuil de soixante caractères attendait indéfiniment un
+   * exposé qui ne vient plus.
+   *
+   * Trois tentatives : sur un site déployé, le téléchargement du moteur — sept
+   * mégaoctets de WebAssembly — bloque le fil principal, et le glisser tombe
+   * dans le vide sans que rien ne le signale. Ce n'est pas un défaut du produit,
+   * c'est l'instrument qui frappe trop tôt.
+   */
+  // Deux attentes distinctes, parce que deux choses peuvent manquer. D'abord
+  // que le coup soit JOUÉ : le glisser rate de temps en temps sur un site
+  // déployé, et on le voit au relevé des demi-coups, pas au texte. Ensuite que
+  // le professeur parle, ce qui prend le temps qu'il faut au moteur.
+  let joue = false;
+  // Huit tentatives, pas quatre : au premier navigateur, le moteur se télécharge
+  // encore — sept mégaoctets — et l'échiquier n'accepte rien tant que le fil
+  // principal est pris. C'est le seul cas où l'attente est longue ; les suivants
+  // partent d'un cache chaud et passent du premier coup.
+  for (let essai = 1; essai <= 8 && !joue; essai++) {
+    await glisser(essai % 2 === 0);
+    joue = await page
+      .waitForFunction(() => !/Aucun coup joué/i.test(document.body.textContent ?? ''), {
+        timeout: 10000,
+        polling: 200,
+      })
+      .then(() => true)
+      .catch(() => false);
+    if (!joue) console.log(`  (${cas.nom}) le glisser n’a pas pris, nouvelle tentative`);
+  }
+  verifier(joue, `[${cas.nom}] Le coup a été joué sur l’échiquier`);
+
   const texte = await texteStable(page, { different: accueil });
 
   console.log(`\n  ${cas.nom} — « ${texte.slice(0, 220)}${texte.length > 220 ? '…' : ''} »`);
@@ -169,8 +254,8 @@ for (const cas of CAS) {
   if (cas.aussi) verifier(cas.aussi.motif.test(texte), `[${cas.nom}] Le professeur ${cas.aussi.libelle}`);
 
   await page.close();
+  await nav.close();
 }
 
-await nav.close();
 console.log('\n' + (echecs === 0 ? 'Commentaires : conformes à la position.' : `${echecs} contrôle(s) en échec.`));
 process.exit(echecs === 0 ? 0 : 1);

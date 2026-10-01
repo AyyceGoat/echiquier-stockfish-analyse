@@ -317,6 +317,16 @@ function piocher<T>(liste: T[], graine: string): T {
 const derniereDe = new Map<string, string>();
 
 /**
+ * Dernière tournure rendue, tous registres confondus.
+ *
+ * Le garde par registre ne suffit pas : « Bien. » figure dans les
+ * acquiescements ET dans les réactions neutres, si bien qu'il pouvait sortir
+ * deux coups de suite, une fois de chaque liste. Le joueur n'entend pas des
+ * registres, il entend une voix — l'interdiction est donc globale.
+ */
+let derniereDite = '';
+
+/**
  * Le professeur vient-il de se contenter d'acquiescer ?
  *
  * Sert à ne pas le faire deux fois de suite quand l'élève enchaîne : la
@@ -355,15 +365,18 @@ function piocherNeuf(liste: string[], graine: string, memoire?: MemoirePhrases):
    * l'historique, et seulement ensuite la partie.
    */
   const dansLaPartie = new Set([...(memoire?.nouvelles ?? []), ...(memoire?.partie ?? [])]);
-  let candidates = liste.filter((t) => !deja.has(t) && t !== derniere);
+  /** Interdite dans tous les cas : celle du registre, et celle qui vient d'être dite. */
+  const rebattue = (t: string) => t === derniere || t === derniereDite;
+  let candidates = liste.filter((t) => !deja.has(t) && !rebattue(t));
   if (candidates.length === 0) {
-    candidates = liste.filter((t) => !dansLaPartie.has(t) && t !== derniere);
+    candidates = liste.filter((t) => !dansLaPartie.has(t) && !rebattue(t));
   }
-  if (candidates.length === 0) candidates = liste.filter((t) => t !== derniere);
+  if (candidates.length === 0) candidates = liste.filter((t) => !rebattue(t));
   if (candidates.length === 0) candidates = liste;
 
   const choisie = piocher(candidates, graine);
   derniereDe.set(cle, choisie);
+  if (choisie) derniereDite = choisie;
   if (memoire && choisie) memoire.nouvelles.push(choisie);
   return choisie;
 }

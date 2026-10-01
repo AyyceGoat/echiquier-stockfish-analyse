@@ -73,11 +73,14 @@ async function commentaireStable(minimum = 40) {
 async function jouerUnePartie(numero) {
   // La position se transmet par `sessionStorage`, comme le fait l'écran
   // d'analyse avec « jouer depuis cette position ».
-  await page.goto(`${BASE}/#/`, { waitUntil: 'networkidle2', timeout: 60000 });
-  await page.evaluate((fen) => sessionStorage.setItem('echiquier.position-a-jouer', fen), POSITION);
+  // L'ORDRE compte : l'écran de jeu consomme la clé à son montage. Déposer la
+  // position avant de naviguer vers `#/assiste` — un changement de fragment,
+  // donc sans rechargement — laissait React la consommer avant le
+  // rechargement, qui repartait alors de la position initiale. On charge donc
+  // l'écran d'abord, on dépose ensuite, et le rechargement est le seul montage
+  // qui lit la clé. Il sert aussi à remonter l'écran entre deux parties.
   await page.goto(`${BASE}/#/assiste`, { waitUntil: 'networkidle2', timeout: 60000 });
-  // Rechargement : revenir sur la même adresse ne remonte pas l'écran, et la
-  // partie précédente resterait en place.
+  await page.evaluate((fen) => sessionStorage.setItem('echiquier.position-a-jouer', fen), POSITION);
   await page.reload({ waitUntil: 'networkidle2', timeout: 60000 });
   await page.waitForFunction(
     () => [...document.querySelectorAll('button')].some((b) => b.textContent?.trim() === 'Jouer les blancs'),
