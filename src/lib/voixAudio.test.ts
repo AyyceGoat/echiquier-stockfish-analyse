@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { phrasesDe } from './voixAudio.ts';
+import { empreinteReplique, phrasesDe } from './voixAudio.ts';
+import { ACQUIESCE, INTERROMPU, REACTIONS, SALUTATIONS } from './repertoireProfesseurs.ts';
 import manifeste from './voixManifeste.json';
 import attribution from './voixProfesseurs.json';
 import { PROFESSEURS } from './professeurs.ts';
@@ -62,10 +63,28 @@ describe('manifeste des phrases pré-générées', () => {
     expect(new Set(fichiers).size).toBe(fichiers.length);
   });
 
-  it('couvre les quatre voix attribuées', () => {
-    // Quatre voix, un fichier par phrase et par voix : le total doit être un
-    // multiple du nombre de voix, sinon une voix a été oubliée.
-    const nbVoix = new Set(Object.values(attribution as Record<string, string>)).size;
-    expect(Object.keys(entrees).length % nbVoix).toBe(0);
+  it('couvre chaque professeur avec sa voix, phrase par phrase', async () => {
+    // Le compte total ne prouve rien, et l'entrée de registre non plus : la
+    // lecture demande un fichier par PHRASE. Un salut de trois phrases dont
+    // seul le bloc entier serait enregistré partirait en synthèse à la
+    // demande — c'est le défaut qu'on garde ici.
+    const voix = attribution as Record<string, string>;
+    for (const p of PROFESSEURS) {
+      const blocs = [
+        ...(SALUTATIONS[p.id] ?? []),
+        ...(ACQUIESCE[p.id] ?? []),
+        ...(INTERROMPU[p.id] ?? []),
+        ...Object.values(REACTIONS[p.id] ?? {}).flat(),
+      ];
+      expect(blocs.length, p.id).toBeGreaterThan(40);
+      const manquantes: string[] = [];
+      for (const bloc of blocs) {
+        for (const phrase of phrasesDe(bloc)) {
+          const cle = await empreinteReplique(voix[p.id], phrase);
+          if (!entrees[cle]) manquantes.push(phrase);
+        }
+      }
+      expect(manquantes, `${p.id} · ${voix[p.id]}`).toEqual([]);
+    }
   });
 });

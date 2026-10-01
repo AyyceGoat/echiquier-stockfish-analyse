@@ -194,6 +194,41 @@ verifier(
   echantillon.signature,
 );
 
+// Le manifeste, lui, est chargé à la demande par l'application : c'est par lui
+// que passe TOUTE la parole des professeurs. S'il manque, ou si les fichiers
+// qu'il annonce ne sont pas déployés, chaque phrase repart en synthèse à la
+// demande et le professeur se taît au bout de deux secondes et demie.
+const manifeste = await page.evaluate(async () => {
+  const r = await fetch('/voix/manifeste.json');
+  if (!r.ok) return { code: r.status };
+  const table = await r.json();
+  const chemins = Object.values(table);
+  // Trois au hasard : vérifier les 2 500 prendrait la journée, en vérifier un
+  // seul ne dirait rien d'un déploiement partiel.
+  const tirage = [0, Math.floor(chemins.length / 2), chemins.length - 1].map((i) => chemins[i]);
+  const servis = [];
+  for (const chemin of tirage) {
+    const f = await fetch(chemin);
+    const octets = new Uint8Array(await f.arrayBuffer());
+    servis.push({
+      chemin,
+      code: f.status,
+      signature: [...octets.slice(0, 3)].map((o) => o.toString(16).padStart(2, '0')).join(''),
+    });
+  }
+  return { code: r.status, entrees: chemins.length, servis };
+});
+verifier(
+  manifeste.code === 200 && (manifeste.entrees ?? 0) > 2000,
+  'Le manifeste des voix est servi et complet',
+  `${manifeste.code} · ${manifeste.entrees ?? 0} entrées`,
+);
+verifier(
+  (manifeste.servis ?? []).every((f) => f.code === 200 && /^(fff|id3)/i.test(f.signature)),
+  'Les phrases annoncées par le manifeste sont réellement déployées',
+  (manifeste.servis ?? []).map((f) => `${f.code} ${f.signature}`).join(' · ') || 'aucun',
+);
+
 // La politique doit autoriser la lecture de ces fichiers et des blobs du
 // cache local : `media-src` est le seul point de blocage possible.
 verifier(

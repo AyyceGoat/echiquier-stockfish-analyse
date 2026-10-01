@@ -8,11 +8,13 @@ import {
   palierDuProfesseur,
   PROFESSEUR_PAR_DEFAUT,
   PROFESSEURS,
+  reinitialiserRythme,
   professeurParId,
   type ContexteCommentaire,
   type NiveauEleve,
 } from './professeurs.ts';
 import { NIVEAUX } from './niveaux.ts';
+import type { Classement } from './classification.ts';
 import { LONGUEUR_CONFORTABLE } from './parole.ts';
 import { boiteBouche, COTE_SOURCE, REPERES } from './reperesPortraits.ts';
 
@@ -192,11 +194,20 @@ describe('commentaireLocal', () => {
     }
   });
 
-  it('reste stable pour un même coup : deux appels donnent le même texte', async () => {
-    const p = professeurParId('homme-ultime');
-    const a = await commentaireLocal.commenter(p, contexte());
-    const b = await commentaireLocal.commenter(p, contexte());
-    expect(a).toBe(b);
+  it('ne redit jamais la même phrase deux fois de suite', async () => {
+    // La stabilité par rendu n'est plus requise — le commentaire est produit
+    // une fois par verdict, puis conservé. En revanche, enchaîner les coups
+    // faisait revenir la même réaction plusieurs fois d'affilée, et c'est ce
+    // qui s'entendait.
+    for (const p of PROFESSEURS) {
+      const vues: string[] = [];
+      for (let i = 0; i < 10; i++) {
+        const t = await commentaireLocal.commenter(p, contexte({ coupSan: 'Nf3' }));
+        vues.push(t.split(/(?<=[.!?…])\s/)[0] ?? '');
+      }
+      const consecutives = vues.filter((v, i) => i > 0 && v === vues[i - 1]);
+      expect(consecutives, `${p.id} : ${vues.join(' | ')}`).toHaveLength(0);
+    }
   });
 
   it('produit un texte pour tous les classements et tous les niveaux', async () => {
@@ -362,6 +373,70 @@ describe('salutationDe', () => {
         memoire.nouvelles = [];
       }
       expect(vues.size, p.id).toBe(8);
+    }
+  });
+});
+
+describe('le rythme commande la longueur', () => {
+  const ctxRythme = (rythme: 'pose' | 'rapide' | 'tresRapide', classement: Classement = 'bon') =>
+    contexte({ rythme, classement, cpApres: 40, perteCp: 20, meilleurSan: null });
+
+  it('abrège quand le joueur accélère', async () => {
+    for (const p of PROFESSEURS) {
+      const pose = await commentaireLocal.commenter(p, ctxRythme('pose'));
+      const rapide = await commentaireLocal.commenter(p, ctxRythme('rapide'));
+      const tresRapide = await commentaireLocal.commenter(p, ctxRythme('tresRapide'));
+      expect(rapide.length, `${p.id} rapide`).toBeLessThanOrEqual(pose.length);
+      expect(tresRapide.length, `${p.id} très rapide`).toBeLessThanOrEqual(rapide.length);
+    }
+  });
+
+  it('explique toujours une faute, même au rythme le plus rapide', async () => {
+    // Abréger ne doit pas revenir à taire ce qui coûte la partie.
+    for (const p of PROFESSEURS) {
+      const t = await commentaireLocal.commenter(
+        p,
+        contexte({ rythme: 'tresRapide', classement: 'gaffe', perteCp: 400 }),
+      );
+      expect(t.length, `${p.id} : ${t}`).toBeGreaterThan(25);
+    }
+  });
+
+  it('reste bref sur un bon coup joué vite', async () => {
+    for (const p of PROFESSEURS) {
+      reinitialiserRythme();
+      const t = await commentaireLocal.commenter(p, ctxRythme('tresRapide', 'excellent'));
+      expect(t.length, `${p.id} : ${t}`).toBeLessThan(30);
+    }
+  });
+
+  it('acquiesce une fois, puis se taît tant que la série dure', async () => {
+    // « Bien. Juste. Noté. Correct. » sur dix coups fait une mitraille.
+    for (const p of PROFESSEURS) {
+      reinitialiserRythme();
+      const suite = [];
+      for (let i = 0; i < 5; i++) {
+        suite.push(await commentaireLocal.commenter(p, ctxRythme('tresRapide', 'excellent')));
+      }
+      expect(suite[0], p.id).not.toBe('');
+      expect(suite.slice(1).join(''), `${p.id} : ${JSON.stringify(suite)}`).toBe('');
+    }
+  });
+
+  it('une faute rend la parole au professeur, même en pleine série', async () => {
+    for (const p of PROFESSEURS) {
+      reinitialiserRythme();
+      await commentaireLocal.commenter(p, ctxRythme('tresRapide', 'excellent'));
+      expect(await commentaireLocal.commenter(p, ctxRythme('tresRapide', 'excellent'))).toBe('');
+      const faute = await commentaireLocal.commenter(
+        p,
+        contexte({ rythme: 'tresRapide', classement: 'gaffe', perteCp: 400 }),
+      );
+      expect(faute.length, `${p.id} faute`).toBeGreaterThan(25);
+      // Et le coup suivant, s'il est bon, reçoit de nouveau un mot.
+      expect(
+        await commentaireLocal.commenter(p, ctxRythme('tresRapide', 'excellent')),
+      ).not.toBe('');
     }
   });
 });

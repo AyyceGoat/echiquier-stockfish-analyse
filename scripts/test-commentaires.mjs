@@ -53,12 +53,49 @@ const CAS = [
     // nulle — l'étiquette doit primer sur le constat « sans conséquence ».
     fen: '4k3/8/8/8/8/8/3Q4/4K3 w - - 0 1',
     coup: ['d2', 'd8'],
-    attendu: /coûte|perd|prise|grave|erreur|faute|attention|sérieux|dommage|se retourne/i,
-    interdit: /jouable mais passif|ne change pas l’appréciation/i,
+    // La dame se donne, et le mat qui était là n'est plus. Les deux constats
+    // sont vrais ; le professeur dit celui que le moteur a retenu comme motif,
+    // et c'est souvent le mat manqué. Ce qui est interdit, c'est de féliciter.
+    attendu: /coûte|perd|prise|grave|erreur|faute|attention|sérieux|dommage|se retourne|s’effondre|mat/i,
+    interdit: /jouable mais passif|ne change pas l’appréciation|bravo|excellent|parfait|bien joué/i,
   },
 ];
 
 const nav = await puppeteer.launch(optionsLancement({ protocolTimeout: 300_000 }));
+
+/** Texte affiché dans la carte du professeur. */
+const lireTexte = (page) =>
+  page.evaluate(() => {
+    const scene = document.querySelector('.pp-scene');
+    let n = scene?.parentElement ?? null;
+    for (let i = 0; i < 4 && n; i++) {
+      const p = n.querySelector(':scope > p');
+      if (p) return p.textContent?.trim() ?? '';
+      n = n.parentElement;
+    }
+    return '';
+  });
+
+/**
+ * Attend que le texte cesse de bouger.
+ *
+ * La révélation est phrase par phrase, et chaque phrase attend son audio :
+ * deux relevés identiques ne suffisent pas, la frappe marque une pause entre
+ * deux phrases. On exige donc plusieurs relevés de suite sans changement.
+ */
+async function texteStable(page, { different = null, minimum = 20, stables = 4, pas = 500, tours = 90 } = {}) {
+  let dernier = null;
+  let identiques = 0;
+  for (let i = 0; i < tours; i++) {
+    const courant = await lireTexte(page);
+    identiques = courant === dernier ? identiques + 1 : 0;
+    dernier = courant;
+    const bon = courant.length >= minimum && (different === null || courant !== different);
+    if (bon && identiques >= stables) return courant;
+    await page.evaluate((ms) => new Promise((r) => setTimeout(r, ms)), pas);
+  }
+  return dernier ?? '';
+}
 
 /** Centre d'une case, vue des blancs. */
 function centre(rect, caseSan) {
@@ -102,16 +139,11 @@ for (const cas of CAS) {
   // Le texte d'accueil est relevé AVANT le coup : c'est le seul repère fiable
   // pour savoir qu'un verdict a remplacé la salutation. Le reconnaître par
   // une liste de phrases devenait faux dès qu'on enrichissait les registres.
-  const accueil = await page.evaluate(() => {
-    const scene = document.querySelector('.pp-scene');
-    let n = scene?.parentElement ?? null;
-    for (let i = 0; i < 4 && n; i++) {
-      const p = n.querySelector(':scope > p');
-      if (p) return p.textContent?.trim() ?? '';
-      n = n.parentElement;
-    }
-    return '';
-  });
+  //
+  // Et il est relevé POSÉ : saisi pendant sa frappe, il ne vaut qu'un préfixe,
+  // et la salutation complète paraissait ensuite « différente de l'accueil » —
+  // le test lisait l'accueil en croyant lire le verdict.
+  const accueil = await texteStable(page);
 
   const a = centre(rect, cas.coup[0]);
   const b = centre(rect, cas.coup[1]);
@@ -123,34 +155,12 @@ for (const cas of CAS) {
   await page.mouse.move(b.x, b.y, { steps: 6 });
   await page.mouse.up();
 
-  // Le commentaire s'écrit caractère par caractère : on attend qu'il cesse
-  // de grandir plutôt qu'un délai fixe, sinon on lit une phrase tronquée.
-  const texte = await page
-    .waitForFunction(
-      (accueil) => {
-        const scene = document.querySelector('.pp-scene');
-        let n = scene?.parentElement ?? null;
-        let courant = '';
-        for (let i = 0; i < 4 && n; i++) {
-          const p = n.querySelector(':scope > p');
-          if (p) {
-            courant = p.textContent?.trim() ?? '';
-            break;
-          }
-          n = n.parentElement;
-        }
-        // Tant que le texte est celui de l'accueil, aucun verdict n'a été
-        // rendu : on lirait la mauvaise réplique.
-        if (courant === accueil || courant.length < 60) return false;
-        if (courant === window.__dernier) return courant;
-        window.__dernier = courant;
-        return false;
-      },
-      { timeout: 120000, polling: 1200 },
-      accueil,
-    )
-    .then((h) => h.jsonValue())
-    .catch(() => '');
+  // Tant que le texte est celui de l'accueil, aucun verdict n'a été rendu : on
+  // lirait la mauvaise réplique. Aucun seuil de longueur non plus — depuis que
+  // la parole est passée au langage humain, une réplique complète tient souvent
+  // en une phrase, et le seuil de soixante caractères attendait indéfiniment un
+  // exposé qui ne vient plus.
+  const texte = await texteStable(page, { different: accueil });
 
   console.log(`\n  ${cas.nom} — « ${texte.slice(0, 220)}${texte.length > 220 ? '…' : ''} »`);
   verifier(texte.length > 0, `[${cas.nom}] Un commentaire est produit`);

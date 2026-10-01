@@ -36,6 +36,8 @@
     "test:fin": "node scripts/test-fin-et-variete.mjs",
     "test:erreurs": "node scripts/test-mes-erreurs.mjs",
     "test:deploye": "node scripts/test-demarrage-deploye.mjs",
+    "test:fluidite": "node scripts/test-fluidite.mjs",
+    "test:rythme": "node scripts/test-rythme.mjs",
     "voix": "node --experimental-strip-types scripts/preparer-voix.mjs"
   },
   "dependencies": {

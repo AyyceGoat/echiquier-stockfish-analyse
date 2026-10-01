@@ -25,6 +25,7 @@
 
 import type { Classement } from './classification.ts';
 import {
+  ACQUIESCE,
   COUP_GARDE,
   FIN_BEAU_COUP,
   INTERROMPU,
@@ -232,6 +233,14 @@ export interface ContexteCommentaire {
   /** Niveau déclaré de l'élève : décide du vocabulaire ET de la profondeur. */
   eleve: NiveauEleve;
   /**
+   * Rythme du joueur, mesuré entre ses deux derniers coups.
+   *
+   * Une réplique complète arrive toujours en retard quand l'élève enchaîne :
+   * le temps de la dire, deux coups ont été joués. Le professeur raccourcit
+   * donc, jusqu'à se taire quand le coup n'appelle rien.
+   */
+  rythme?: 'pose' | 'rapide' | 'tresRapide';
+  /**
    * Évaluation APRÈS le coup, en centipions, du point de vue de l'élève.
    *
    * Sans elle, le professeur félicitait un élève sur le point d'être maté :
@@ -297,18 +306,68 @@ function piocher<T>(liste: T[], graine: string): T {
  * Si toutes les variantes ont servi, on repart de la liste complète plutôt
  * que de ne rien dire — mieux vaut une répétition tardive qu'un blanc.
  */
+/**
+ * Dernière tournure rendue par chaque registre.
+ *
+ * La mémoire écarte ce qui a déjà servi, mais quand un registre est épuisé
+ * elle repart de la liste complète — et le tirage, déterministe, retombait
+ * alors sur la même phrase plusieurs fois de suite. Entendre « Bien,
+ * continuons » trois coups d'affilée est pire qu'une reprise tardive.
+ */
+const derniereDe = new Map<string, string>();
+
+/**
+ * Le professeur vient-il de se contenter d'acquiescer ?
+ *
+ * Sert à ne pas le faire deux fois de suite quand l'élève enchaîne : la
+ * deuxième fois, il se tait.
+ */
+const dernierAcquiesce = new Map<string, boolean>();
+
+/**
+ * Nouvelle partie : le professeur n'a encore rien dit.
+ *
+ * `derniereDe` n'est PAS remise à zéro — ne pas redire la même phrase deux
+ * fois de suite vaut aussi par-dessus le changement de partie.
+ */
+export function reinitialiserRythme(): void {
+  dernierAcquiesce.clear();
+}
+
 function piocherNeuf(liste: string[], graine: string, memoire?: MemoirePhrases): string {
   if (liste.length === 0) return '';
+  const cle = liste[0];
+  const derniere = derniereDe.get(cle);
+
   const deja = memoire
     ? new Set([...memoire.dites, ...memoire.nouvelles, ...memoire.partie])
     : new Set<string>();
-  const restantes = liste.filter((t) => !deja.has(t));
-  const choisie = piocher(restantes.length > 0 ? restantes : liste, graine);
-  // On note la tournure retenue : c'est elle, et non le commentaire
-  // assemblé, qui constitue l'unité de répétition.
+
+  /**
+   * Trois paliers, du plus exigeant au moins exigeant.
+   *
+   * La règle est : jamais la même phrase dans une partie TANT QU'IL EN RESTE
+   * D'AUTRES. La mémoire des parties passées est donc le premier filtre, mais
+   * elle ne doit pas être le dernier : un petit registre — trois façons
+   * d'accepter qu'on garde son coup — se retrouve entièrement « déjà dit » dès
+   * la deuxième partie, et on repartait alors de la liste complète, ce qui
+   * autorisait une répétition dans la partie en cours. On relâche donc d'abord
+   * l'historique, et seulement ensuite la partie.
+   */
+  const dansLaPartie = new Set([...(memoire?.nouvelles ?? []), ...(memoire?.partie ?? [])]);
+  let candidates = liste.filter((t) => !deja.has(t) && t !== derniere);
+  if (candidates.length === 0) {
+    candidates = liste.filter((t) => !dansLaPartie.has(t) && t !== derniere);
+  }
+  if (candidates.length === 0) candidates = liste.filter((t) => t !== derniere);
+  if (candidates.length === 0) candidates = liste;
+
+  const choisie = piocher(candidates, graine);
+  derniereDe.set(cle, choisie);
   if (memoire && choisie) memoire.nouvelles.push(choisie);
   return choisie;
 }
+
 
 /**
  * Salutation du professeur, sans répéter celle des parties précédentes.
@@ -359,17 +418,53 @@ export const commentaireLocal: MoteurCommentaire = {
     const graine = `${prof.id}|${ctx.coupSan}|${ctx.classement}|${ctx.eleve}`;
     const morceaux: string[] = [];
 
+    /**
+     * Le rythme commande la longueur.
+     *
+     * Posé : réaction et phrase de fond. Rapide : la réaction seule, sauf
+     * faute. Très rapide : un mot, puis le silence tant que la série dure —
+     * mieux vaut se taire qu'une parole qui court après le coup suivant. La
+     * faute, elle, est expliquée à n'importe quel rythme.
+     */
+    const rythme = ctx.rythme ?? 'pose';
+    const grave = ctx.classement === 'gaffe' || ctx.classement === 'erreur';
+    if (rythme === 'tresRapide' && !grave) {
+      // Un mot, puis le silence : enchaîner « Bien. Juste. Noté. Correct. »
+      // sur dix coups fait une mitraille, pas un professeur. On acquiesce
+      // une fois, on se tait ensuite tant que la série continue et qu'il n'y
+      // a rien à signaler. Une faute, ou un coup posé, rouvre la bouche.
+      if (dernierAcquiesce.get(prof.id)) return '';
+      dernierAcquiesce.set(prof.id, true);
+      return piocherNeuf(ACQUIESCE[prof.id] ?? [], graine, memoire);
+    }
+    dernierAcquiesce.set(prof.id, false);
+
     // 1. Réaction, en deux ou trois mots.
     const registre = REACTIONS[prof.id] ?? REACTIONS.ephraim;
+    /**
+     * Un motif qui reproche quelque chose interdit la félicitation.
+     *
+     * « Voilà le bon coup. Ce coup est trop timide. » : les deux moitiés
+     * venaient de deux sources — l'étiquette du moteur, plutôt bonne, et le
+     * motif, critique — et se contredisaient à voix haute. Un coup jouable mais
+     * mou se commente au ton neutre, pas au ton de l'éloge.
+     */
+    const tiede = ctx.explication?.motif === 'passif' || ctx.explication?.motif === 'occasion-manquee';
     const ton: 'bon' | 'faute' | 'grave' | 'neutre' =
       ctx.classement === 'gaffe'
         ? 'grave'
         : ctx.classement === 'erreur' || ctx.classement === 'imprecision'
           ? 'faute'
-          : ctx.classement === 'theorie'
+          : ctx.classement === 'theorie' || tiede
             ? 'neutre'
             : 'bon';
     morceaux.push(piocherNeuf(registre[ton], graine, memoire));
+
+    // 2. Ce que le coup fait, traduit en français. Sautée quand l'élève
+    //    enchaîne sans qu'il y ait de faute à signaler.
+    if (rythme === 'rapide' && !grave) {
+      return sansCoordonnees(morceaux.filter(Boolean).join(' '));
+    }
 
     // 2. Ce que le coup fait, traduit en français.
     const coup = ctx.fenAvant ? decrireCoup(ctx.fenAvant, ctx.coupSan) : null;

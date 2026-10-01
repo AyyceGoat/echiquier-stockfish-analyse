@@ -346,45 +346,201 @@ export const LECON_MOTIF: Partial<Record<MotifExplication, string>> = {
    par le rapport écrit, qui se lit et se relit. */
 export const REACTIONS: Record<string, Record<'bon' | 'faute' | 'grave' | 'neutre', string[]>> = {
   'homme-ultime': {
-    bon: ['Juste.', 'Correct.', 'Bien.', 'C’est le coup.', 'Rien à redire.', 'Propre.'],
-    faute: ['Non.', 'Trop mou.', 'Vous relâchez.', 'Pas celui-là.', 'Insuffisant.', 'Vous perdez le fil.'],
-    grave: ['Non, c’est grave.', 'Là, vous lâchez la partie.', 'Faute lourde.', 'Indéfendable.', 'Vous venez de tout gâcher.'],
-    neutre: ['On continue.', 'Bien.', 'Poursuivez.', 'Soit.'],
+    bon: [
+      'Juste.', 'Correct.', 'Bien.', 'C’est le coup.', 'Rien à redire.', 'Propre.',
+      'Voilà.', 'Exact.', 'Solide.', 'Vous tenez.', 'Sans reproche.', 'C’est cela.',
+    ],
+    faute: [
+      'Non.', 'Trop mou.', 'Vous relâchez.', 'Pas celui-là.', 'Insuffisant.',
+      'Vous perdez le fil.', 'Ce n’est pas assez.', 'Vous hésitez.', 'Approximatif.',
+      'Vous pouviez mieux.', 'Faible.', 'Vous cédez du terrain.',
+    ],
+    grave: [
+      'Non, c’est grave.', 'Là, vous lâchez la partie.', 'Faute lourde.',
+      'Indéfendable.', 'Vous venez de tout gâcher.', 'C’est une catastrophe.',
+      'Vous vous sabordez.', 'Inacceptable.', 'Là, tout bascule.', 'Vous jetez la partie.',
+    ],
+    neutre: ['On continue.', 'Bien.', 'Poursuivez.', 'Soit.', 'Suivant.', 'Allons-y.', 'Noté.', 'Très bien.'],
   },
   ephraim: {
-    bon: ['Bien.', 'Solide.', 'Bon ordre.', 'C’est méthodique.', 'La structure tient.', 'Juste.'],
-    faute: ['Attention.', 'Ce n’est pas l’ordre.', 'Reprenons.', 'Il manque une étape.', 'Trop tôt.', 'Pas encore.'],
-    grave: ['Arrêtons-nous.', 'C’est grave.', 'La position se retourne.', 'Faute lourde.', 'Vous cassez tout.'],
-    neutre: ['On continue.', 'Poursuivez.', 'Très bien.', 'Suivant.'],
+    bon: [
+      'Bien.', 'Solide.', 'Bon ordre.', 'C’est méthodique.', 'La structure tient.',
+      'Juste.', 'Propre.', 'Voilà le bon coup.', 'Cohérent.', 'Dans l’ordre.',
+      'C’est logique.', 'Bien construit.',
+    ],
+    faute: [
+      'Attention.', 'Ce n’est pas l’ordre.', 'Reprenons.', 'Il manque une étape.',
+      'Trop tôt.', 'Pas encore.', 'Vous brûlez une étape.', 'L’ordre est faux.',
+      'Ce coup anticipe trop.', 'Il fallait préparer.', 'Prématuré.', 'Pas dans cet ordre.',
+    ],
+    grave: [
+      'Arrêtons-nous.', 'C’est grave.', 'La position se retourne.', 'Faute lourde.',
+      'Vous cassez tout.', 'La structure s’effondre.', 'Là, c’est sérieux.',
+      'Tout s’écroule ici.', 'C’est une rupture.', 'Vous perdez la partie ici.',
+    ],
+    neutre: ['On continue.', 'Poursuivez.', 'Très bien.', 'Suivant.', 'Entendu.', 'Bien.', 'Passons.', 'Noté.'],
   },
   johana: {
-    bon: ['Voilà !', 'Très bien.', 'Oui, c’est ça.', 'Bien vu.', 'Parfait.', 'Vous progressez.'],
-    faute: ['Attention.', 'Doucement.', 'Hmm, pas tout à fait.', 'Regardez mieux.', 'Un peu vite.', 'On reprend.'],
-    grave: ['Aïe.', 'Là, c’est sérieux.', 'Oh non.', 'Ça fait mal.', 'Attention, c’est lourd.'],
-    neutre: ['On continue.', 'D’accord.', 'Très bien.', 'Allez-y.'],
+    bon: [
+      'Voilà !', 'Très bien.', 'Oui, c’est ça.', 'Bien vu.', 'Parfait.',
+      'Vous progressez.', 'Bravo.', 'Excellent.', 'C’est exactement ça.',
+      'Joli coup.', 'Vous y êtes.', 'Continuez comme ça.',
+    ],
+    faute: [
+      'Attention.', 'Doucement.', 'Hmm, pas tout à fait.', 'Regardez mieux.',
+      'Un peu vite.', 'On reprend.', 'Pas tout à fait ça.', 'Presque.',
+      'Il y avait mieux.', 'Réfléchissez encore.', 'Vous alliez trop vite.', 'Oups.',
+    ],
+    grave: [
+      'Aïe.', 'Là, c’est sérieux.', 'Oh non.', 'Ça fait mal.',
+      'Attention, c’est lourd.', 'Aïe aïe.', 'C’est très embêtant.',
+      'Oh là là.', 'Ça coûte cher.', 'Là, ça pique.',
+    ],
+    neutre: ['On continue.', 'D’accord.', 'Très bien.', 'Allez-y.', 'Ça marche.', 'Bien.', 'On avance.', 'Parfait.'],
   },
   serena: {
-    bon: ['Joli.', 'Ah, voilà.', 'Très bien vu.', 'Élégant.', 'Parfait.', 'C’est ça.'],
-    faute: ['Hmm.', 'Tiens, non.', 'Dommage.', 'Ah, attention.', 'Pas tout à fait.', 'Voyons…'],
-    grave: ['Oh.', 'Aïe aïe aïe.', 'Alors là…', 'C’est ennuyeux.', 'Mmh, non.'],
-    neutre: ['On continue.', 'Bien.', 'Poursuivons.', 'Allons-y.'],
+    bon: [
+      'Joli.', 'Ah, voilà.', 'Très bien vu.', 'Élégant.', 'Parfait.', 'C’est ça.',
+      'Charmant.', 'Bien senti.', 'Voilà qui est juste.', 'Fin.', 'Joliment joué.',
+      'Exactement.',
+    ],
+    faute: [
+      'Hmm.', 'Tiens, non.', 'Dommage.', 'Ah, attention.', 'Pas tout à fait.',
+      'Voyons…', 'Mmh.', 'C’est dommage.', 'Presque.', 'Ah, non.',
+      'Il y avait mieux.', 'Pas celui-ci.',
+    ],
+    grave: [
+      'Oh.', 'Aïe aïe aïe.', 'Alors là…', 'C’est ennuyeux.', 'Mmh, non.',
+      'Oh là.', 'C’est fâcheux.', 'Quel dommage.', 'Aïe.', 'C’est très ennuyeux.',
+    ],
+    neutre: ['On continue.', 'Bien.', 'Poursuivons.', 'Allons-y.', 'Soit.', 'Très bien.', 'Passons.', 'D’accord.'],
   },
 };
 
-/** Réponse au choix « reprendre le coup ». */
+/**
+ * Réponse au choix « reprendre le coup ».
+ *
+ * Douze par professeur, comme les autres registres : celui-ci tombe une fois
+ * par coup repris, donc plusieurs fois par partie. À trois variantes, la
+ * troisième partie n'en avait plus de neuves et le professeur se répétait.
+ */
 export const REPRISE_ACCORDEE: Record<string, string[]> = {
-  'homme-ultime': ['Bien. Rejouez, et réfléchissez cette fois.', 'On reprend. Faites mieux.', 'Soit. Recommencez.'],
-  ephraim: ['D’accord, on reprend.', 'Très bien, rejouez ce coup.', 'On revient en arrière. Regardez la position.'],
-  johana: ['D’accord, on reprend !', 'Bonne idée, rejouez-le.', 'On efface, à vous.'],
-  serena: ['On reprend, volontiers.', 'Très bien, revenons en arrière.', 'D’accord, rejouez.'],
+  'homme-ultime': [
+    'Bien. Rejouez, et réfléchissez cette fois.',
+    'On reprend. Faites mieux.',
+    'Soit. Recommencez.',
+    'Accordé. Ne refaites pas le même.',
+    'Reprenez. Cette fois, comptez.',
+    'Va pour la reprise. Regardez d’abord.',
+    'On efface. Mais on n’efface pas la raison.',
+    'Entendu. La position n’a pas changé, elle.',
+    'Reprenez donc. Je vous attends.',
+    'Deuxième essai. Il vaut mieux qu’il serve.',
+    'Bien. Un coup reprisé est un coup compris.',
+    'Soit. Prenez le temps, cette fois.',
+  ],
+  ephraim: [
+    'D’accord, on reprend.',
+    'Très bien, rejouez ce coup.',
+    'On revient en arrière. Regardez la position.',
+    'Reprenez. Prenez le temps qu’il faut.',
+    'Volontiers. Reconsidérez tranquillement.',
+    'On efface. Reprenons depuis la position.',
+    'Entendu. Que voyez-vous d’autre ?',
+    'Accordé. Relisez la position avant de jouer.',
+    'Bien sûr. Un coup repris, c’est un coup examiné.',
+    'On revient. Cherchez le coup qui tient.',
+    'D’accord. Reprenez sans vous presser.',
+    'Très bien. La bonne idée est souvent la deuxième.',
+  ],
+  johana: [
+    'D’accord, on reprend !',
+    'Bonne idée, rejouez-le.',
+    'On efface, à vous.',
+    'Oui, reprenez !',
+    'Pas de souci, on recommence.',
+    'Allez-y, une autre fois.',
+    'On annule, à vous de jouer.',
+    'Très bien, deuxième essai !',
+    'Ça arrive ! Reprenez.',
+    'Avec plaisir, rejouez.',
+    'On revient en arrière, tranquille.',
+    'Bien vu de reprendre. Allez-y !',
+  ],
+  serena: [
+    'On reprend, volontiers.',
+    'Très bien, revenons en arrière.',
+    'D’accord, rejouez.',
+    'Reprenons. Rien n’est perdu.',
+    'Bien sûr, on efface.',
+    'Entendu. Regardez encore.',
+    'Volontiers. Le tableau reste ouvert.',
+    'On revient. Prenez votre temps.',
+    'D’accord. Cherchez la ligne plus juste.',
+    'Reprenez donc, c’est de bon sens.',
+    'Très bien. Un coup se médite.',
+    'Accordé. Écoutez la position.',
+  ],
 };
 
 /** Réponse au choix « garder le coup ». */
 export const COUP_GARDE: Record<string, string[]> = {
-  'homme-ultime': ['Comme vous voulez. On continue.', 'Vous assumez. Bien.', 'Soit, poursuivons.'],
-  ephraim: ['Bien, on continue avec ce coup.', 'D’accord. Voyons la suite.', 'Entendu, poursuivons.'],
-  johana: ['D’accord, on continue !', 'Très bien, allons-y.', 'Ça marche, on poursuit.'],
-  serena: ['Va pour ce coup.', 'Entendu, continuons.', 'D’accord, poursuivons.'],
+  'homme-ultime': [
+    'Comme vous voulez. On continue.',
+    'Vous assumez. Bien.',
+    'Soit, poursuivons.',
+    'Gardé. C’est votre partie.',
+    'Entendu. Vous vivrez avec.',
+    'Bien. Allons voir ce que ça donne.',
+    'Décidé, donc. On avance.',
+    'Vous tenez votre coup. Notons-le.',
+    'Soit. La position répondra.',
+    'D’accord. On saura bientôt.',
+    'Assumé. J’aime la fermeté.',
+    'On garde. Suite.',
+  ],
+  ephraim: [
+    'Bien, on continue avec ce coup.',
+    'D’accord. Voyons la suite.',
+    'Entendu, poursuivons.',
+    'Gardé. Regardons ce qu’il ouvre.',
+    'Très bien. La position va nous dire.',
+    'On garde. Continuons calmement.',
+    'D’accord, c’est votre choix. Suite.',
+    'Entendu. Observons la réponse.',
+    'On poursuit sur ce coup.',
+    'Bien. Voyons où il mène.',
+    'Accordé. Enchaînons.',
+    'Gardons-le, et regardons.',
+  ],
+  johana: [
+    'D’accord, on continue !',
+    'Très bien, allons-y.',
+    'Ça marche, on poursuit.',
+    'On le garde, super.',
+    'Parfait, on enchaîne !',
+    'C’est vous qui décidez, allons-y.',
+    'Gardé ! On continue.',
+    'Très bien, voyons la suite.',
+    'Ça me va, on avance.',
+    'D’accord ! À la suite.',
+    'On poursuit comme ça.',
+    'Entendu, on continue !',
+  ],
+  serena: [
+    'Va pour ce coup.',
+    'Entendu, continuons.',
+    'D’accord, poursuivons.',
+    'Gardons-le. Voyons la suite.',
+    'Très bien. On avance.',
+    'C’est votre coup, je le respecte.',
+    'Entendu. Écoutons la position.',
+    'On garde. Continuons.',
+    'D’accord. La suite nous dira.',
+    'Bien. Poursuivons ainsi.',
+    'Accordé, allons-y.',
+    'On le tient. Suite.',
+  ],
 };
 
 /**
@@ -394,8 +550,82 @@ export const COUP_GARDE: Record<string, string[]> = {
  * ou trois coups, comme c'était le cas, donne l'impression qu'il a décroché.
  */
 export const INTERROMPU: Record<string, string[]> = {
-  'homme-ultime': ['Ah, vous avez joué.', 'Vous enchaînez. Bien.', 'Déjà ? Voyons.'],
-  ephraim: ['Ah, vous avez joué ça.', 'Vous allez vite. Regardons.', 'Bien, continuons.'],
-  johana: ['Ah, vous enchaînez !', 'Oh, déjà ! Voyons ça.', 'Vous êtes rapide, d’accord.'],
-  serena: ['Ah, vous avez joué ça.', 'Vite fait ! Voyons.', 'Oh, déjà ?'],
+  'homme-ultime': [
+    'Ah, vous avez joué.',
+    'Vous enchaînez. Bien.',
+    'Déjà ? Voyons.',
+    'Vous ne m’attendez pas. Soit.',
+    'Pressé. J’aime ça.',
+    'Vous avancez vite.',
+    'Sans hésiter, donc.',
+    'Bon. Continuons.',
+    'Je n’avais pas fini, mais soit.',
+    'Vous tranchez vite.',
+    'À la bonne heure.',
+    'Vous ne perdez pas de temps.',
+    'Voyons ce coup-là.',
+    'Suivant, alors.',
+  ],
+  ephraim: [
+    'Ah, vous avez joué ça.',
+    'Vous allez vite. Regardons.',
+    'Bien, continuons.',
+    'Vous enchaînez, d’accord.',
+    'Passons à celui-ci.',
+    'Vous ne laissez pas le temps. Voyons.',
+    'D’accord, ce coup-là.',
+    'Prenons celui-ci alors.',
+    'Vous avancez. Suivons.',
+    'Entendu, regardons.',
+    'Autre coup, autre question.',
+    'Je reprends là-dessus.',
+    'Bien. Celui-ci maintenant.',
+    'Allons-y pour ce coup.',
+  ],
+  johana: [
+    'Ah, vous enchaînez !',
+    'Oh, déjà ! Voyons ça.',
+    'Vous êtes rapide, d’accord.',
+    'Hop, un autre !',
+    'Vous ne m’attendez pas !',
+    'D’accord, on suit.',
+    'Vite fait ! Regardons.',
+    'Ah, vous avez décidé.',
+    'On enchaîne alors.',
+    'Vous êtes lancé, très bien.',
+    'Celui-là maintenant.',
+    'Je vous suis !',
+    'D’accord, celui-ci.',
+    'Vous allez plus vite que moi.',
+  ],
+  serena: [
+    'Ah, vous avez joué ça.',
+    'Vite fait ! Voyons.',
+    'Oh, déjà ?',
+    'Vous ne me laissez pas finir.',
+    'Tiens, un autre.',
+    'Vous êtes pressé aujourd’hui.',
+    'Soit, celui-ci.',
+    'Je n’avais pas terminé, tant pis.',
+    'Passons à celui-là.',
+    'Vous enchaînez joliment.',
+    'D’accord, regardons.',
+    'Ah, la vitesse.',
+    'Voyons ce nouveau coup.',
+    'Bien, celui-ci alors.',
+  ],
+};
+
+/**
+ * Réactions très brèves, pour le jeu rapide.
+ *
+ * Quand l'élève enchaîne, une réplique complète arrive toujours en retard sur
+ * le coup en cours. Le professeur se contente alors d'un mot — et se tait
+ * tout à fait quand le coup n'appelle rien.
+ */
+export const ACQUIESCE: Record<string, string[]> = {
+  'homme-ultime': ['Bien.', 'Juste.', 'Correct.', 'Poursuivez.', 'Soit.', 'Oui.', 'Continuez.', 'Noté.'],
+  ephraim: ['Bien.', 'Juste.', 'On continue.', 'Solide.', 'D’accord.', 'Noté.', 'Poursuivez.', 'Entendu.'],
+  johana: ['Bien !', 'Oui !', 'Voilà.', 'Parfait.', 'On continue.', 'Très bien.', 'Ça marche.', 'Super.'],
+  serena: ['Bien.', 'Joli.', 'Oui.', 'Parfait.', 'Continuons.', 'Très bien.', 'D’accord.', 'Allons-y.'],
 };

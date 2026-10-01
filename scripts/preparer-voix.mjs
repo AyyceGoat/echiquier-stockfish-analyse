@@ -20,10 +20,14 @@
  *   node scripts/preparer-voix.mjs figees
  *     Tout le texte invariable des quatre professeurs — salutations,
  *     discours de fin, registres — avec la voix attribuée à chacun.
+ *
+ *   node scripts/preparer-voix.mjs ranger
+ *     Retire l'audio qu'aucune lecture ne peut plus réclamer, après un
+ *     changement de corpus.
  */
 
 import { execFile } from 'node:child_process';
-import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, existsSync, writeFileSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 
@@ -184,8 +188,11 @@ async function phrasesFigees() {
     if (typeof valeur === 'string') {
       const t = valeur.trim();
       // On écarte les fragments qui ne sont pas des phrases : libellés,
-      // identifiants, morceaux destinés à être complétés par un coup.
-      if (t.length >= 12 && /[.!?…]$/.test(t)) sortie.add(t);
+      // identifiants, morceaux destinés à être complétés par un coup. Le seuil
+      // reste bas : les acquiescements du jeu rapide — « Bien. », « Noté. » —
+      // sont les répliques les plus fréquentes et les plus pressées, ce sont
+      // les dernières qu'on voudrait laisser à la synthèse à la demande.
+      if (t.length >= 3 && /[.!?…]$/.test(t)) sortie.add(t);
     } else if (Array.isArray(valeur)) {
       for (const v of valeur) recolter(v, sortie);
     } else if (valeur && typeof valeur === 'object') {
@@ -265,7 +272,24 @@ async function phrasesFigees() {
       recolter(valeur, sortie);
     }
   }
-  return [...sortie].sort();
+
+  /**
+   * L'unité enregistrée est la phrase, pas le paragraphe.
+   *
+   * La lecture découpe le commentaire par `phrasesDe` et demande un fichier
+   * par phrase. Une entrée de registre qui en contient trois n'était donc
+   * jamais réclamée telle quelle : son fichier dormait, et ses trois phrases
+   * partaient en synthèse à la demande. On enregistre donc ce qui est
+   * réellement demandé — avec exactement la même règle de découpage.
+   */
+  const parPhrase = new Set();
+  for (const bloc of sortie) {
+    for (const phrase of bloc.split(/(?<=[.!?…])\s+/)) {
+      const t = phrase.trim();
+      if (t.length >= 3) parPhrase.add(t);
+    }
+  }
+  return [...parPhrase].sort();
 }
 
 async function figees(voixDemandees) {
@@ -338,11 +362,55 @@ function lireAttribution() {
   }
 }
 
+/**
+ * Retire l'audio que la lecture ne demandera jamais.
+ *
+ * Le corpus a changé de forme : on enregistrait des blocs de plusieurs
+ * phrases, on enregistre maintenant la phrase. Les anciens fichiers restent
+ * sur le disque sans que rien ne puisse les réclamer — leur clé est
+ * l'empreinte du texte exact. Vingt mégaoctets d'audio muet dans le dépôt et
+ * dans chaque déploiement : on les enlève, ils se régénèrent d'un passage.
+ */
+async function ranger(voixDemandees) {
+  const attribution = voixDemandees.length > 0 ? voixDemandees : Object.values(lireAttribution());
+  const phrases = await phrasesFigees();
+  const utiles = new Set();
+  for (const voix of attribution) for (const texte of phrases) utiles.add(empreinte(voix, texte));
+
+  const manifeste = existsSync('src/lib/voixManifeste.json')
+    ? JSON.parse(readFileSync('src/lib/voixManifeste.json', 'utf8'))
+    : {};
+  const garde = {};
+  let retires = 0;
+  let octets = 0;
+  for (const [cle, chemin] of Object.entries(manifeste)) {
+    if (utiles.has(cle)) {
+      garde[cle] = chemin;
+      continue;
+    }
+    const fichier = `public${chemin}`;
+    if (existsSync(fichier)) {
+      octets += statSync(fichier).size;
+      rmSync(fichier);
+    }
+    retires += 1;
+  }
+  const rendu = JSON.stringify(garde, null, 0);
+  writeFileSync('src/lib/voixManifeste.json', rendu);
+  writeFileSync('public/voix/manifeste.json', rendu);
+  console.log(`${retires} fichiers inutilisables retirés — ${(octets / 1048576).toFixed(1)} Mo.`);
+  console.log(`Manifeste : ${Object.keys(garde).length} entrées pour ${phrases.length} phrases et ${attribution.length} voix.`);
+  const manquants = [...utiles].filter((c) => !garde[c]).length;
+  console.log(manquants === 0 ? 'Couverture complète.' : `${manquants} fichiers manquants — relancer « figees ».`);
+}
+
 const mode = process.argv[2] ?? 'apercu';
 if (mode === 'apercu') {
   await apercu();
 } else if (mode === 'figees') {
   await figees(process.argv.slice(3));
+} else if (mode === 'ranger') {
+  await ranger(process.argv.slice(3));
 } else {
   console.log(`Mode inconnu : ${mode}`);
   process.exit(2);

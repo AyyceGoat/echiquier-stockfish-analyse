@@ -45,6 +45,7 @@ import {
   commentaireFinPartie,
   commentaireLocal,
   repliqueGarder,
+  reinitialiserRythme,
   repliqueInterrompu,
   repliqueReprise,
   issueDe,
@@ -130,6 +131,17 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
   const journal = useRef<CoupMarquant[]>([]);
   /** Accueil de la partie en cours, tiré une seule fois. */
   const salutation = useRef<string | null>(null);
+  /** Le professeur a-t-il déjà commenté un coup ? Alors il ne resalue plus. */
+  const aDejaParle = useRef(false);
+
+  /**
+   * Horodatage du dernier coup de l'élève, pour mesurer son rythme.
+   *
+   * Une réplique complète arrive toujours en retard quand on enchaîne : le
+   * temps de la dire, le coup suivant est joué. Le professeur raccourcit donc
+   * quand l'élève accélère, et se tait s'il n'y a rien d'important à dire.
+   */
+  const dernierCoupLe = useRef<number>(0);
   const [finDite, setFinDite] = useState(false);
   const [evaluation, setEvaluation] = useState<Evaluation | null>(null);
   const [promotionEnAttente, setPromotion] = useState<{ depuis: string; vers: string } | null>(null);
@@ -313,6 +325,13 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
       if (!joue) return;
 
       if (joue.couleur === monCamp) {
+        // Rythme : l'écart avec le coup précédent décide de la longueur de la
+        // réplique. Sous deux secondes, le professeur se contente d'un mot ;
+        // sous quatre, il abrège.
+        const maintenant = Date.now();
+        const ecart = dernierCoupLe.current === 0 ? Infinity : maintenant - dernierCoupLe.current;
+        dernierCoupLe.current = maintenant;
+        rythmeCourant.current = ecart < 2000 ? 'tresRapide' : ecart < 4000 ? 'rapide' : 'pose';
         verdictEnAttente.current = true;
         setVerdict(null);
         void calculerVerdict(fenAvant, joue.uci, joue.fen, [...sanAvant, joue.san]);
@@ -400,6 +419,12 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
     // finie — c'est précisément ce qui était signalé.
     if (fin) return;
     if (!verdict) {
+      // La salutation appartient à l'ouverture, pas à l'entre-deux-coups.
+      //
+      // Le verdict est retiré dès que l'élève garde son coup : l'effet
+      // repassait alors par cette branche et réécrivait « Bonjour… » entre
+      // chaque coup. Une fois qu'il a commenté, le professeur ne resalue plus.
+      if (aDejaParle.current) return;
       // Pas de verdict : le professeur salue. C'est ce qui le rend présent
       // dès le lancement, avant le premier coup — auparavant il n'existait
       // qu'à l'intérieur de la carte de verdict, donc nulle part tant qu'on
@@ -430,14 +455,30 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
         cpApres: verdict.cpApres,
         explication: verdict.explication,
         eleve: reglages.niveauEleve,
+        rythme: rythmeCourant.current,
         memoire: memoire.current,
       })
       .then((texte) => {
         if (!vivant) return;
+        aDejaParle.current = true;
+        // Le silence est un choix, pas un oubli : quand le rythme lui impose
+        // de se taire, il se taît vraiment. Reconnaître le coup ici revenait
+        // à parler quand même — « Je reprends. » à chaque coup d'une série.
+        if (texte === '') {
+          setCommentaire('');
+          return;
+        }
         // Si le professeur parlait encore, il reconnaît le coup avant
         // d'enchaîner : rester muet deux ou trois coups donnait l'impression
         // qu'il avait décroché.
-        const prefixe = parleEncore.current ? `${repliqueInterrompu(prof, memoire.current)} ` : '';
+        //
+        // Sauf au rythme le plus vif : là, sa réplique tient déjà en un mot, et
+        // la faire précéder de « Entendu, poursuivons. » la rallongeait au
+        // moment précis où il faut abréger.
+        const prefixe =
+          parleEncore.current && rythmeCourant.current !== 'tresRapide'
+            ? `${repliqueInterrompu(prof, memoire.current)} `
+            : '';
         // Les tournures ne sont retenues QU'UNE FOIS le commentaire affiché :
         // un commentaire préparé puis abandonné — l'élève reprend son coup —
         // ne doit pas condamner ses tournures.
@@ -534,6 +575,16 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
    */
   const DELAI_AVANT_TEXTE_MS = 900;
 
+  /**
+   * L'accueil, lui, peut attendre davantage.
+   *
+   * Au lancement, le moteur se télécharge et se prépare : ce temps mort est
+   * précisément celui de la salutation. Lui accorder le même budget qu'à une
+   * réplique en cours de partie la laissait muette sur une connexion réelle —
+   * le professeur jouait son premier coup sans avoir rien dit.
+   */
+  const DELAI_ACCUEIL_MS = 4000;
+
   useEffect(() => {
     const mien = ++generation.current;
 
@@ -554,6 +605,9 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
     }
 
     const perime = () => generation.current !== mien;
+    // L'accueil bénéficie d'un budget plus large : rien d'autre ne se joue à
+    // ce moment-là.
+    const estAccueil = commentaire === salutation.current;
     const phrases = commentaire
       .split(/(?<=[.!?…])\s+/)
       .map((p) => p.trim())
@@ -595,7 +649,12 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
           // Première phrase : on ne fait attendre l'écran qu'un court instant.
           // Les suivantes sont déjà résolues, l'audio ayant été demandé en
           // parallèle dès le début.
-          new Promise<null>((r) => setTimeout(() => r(null), rang === 0 ? DELAI_AVANT_TEXTE_MS : 0)),
+          new Promise<null>((r) =>
+            setTimeout(
+              () => r(null),
+              rang === 0 ? (estAccueil ? DELAI_ACCUEIL_MS : DELAI_AVANT_TEXTE_MS) : 0,
+            ),
+          ),
         ]).catch(() => null);
         if (perime()) return;
 
@@ -636,9 +695,28 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
    * repasser le professeur par la branche « pas de verdict » : il redisait
    * bonjour au milieu de la partie. Il répond maintenant au choix.
    */
+  /**
+   * Rythme observé, recalculé à chaque coup.
+   *
+   * Seuils choisis sur ce qu'une réplique prend à dire : une phrase courte
+   * tient en deux secondes environ, une réplique complète en quatre.
+   */
+  const rythmeCourant = useRef<'pose' | 'rapide' | 'tresRapide'>('pose');
+
+  /**
+   * Accusé de réception d'un choix — garder le coup, ou le reprendre.
+   *
+   * Muet quand l'élève enchaîne. Ces répliques tombent sur le clic, donc une
+   * fois par coup : à trois coups par seconde, elles remplissaient à elles
+   * seules toute la parole du professeur, et le commentaire du coup n'avait
+   * plus la place d'être dit.
+   */
   const repondreAuChoix = useCallback(
-    (texte: string) => {
-      setCommentaire(texte);
+    (replique: () => string) => {
+      // La réplique n'est même pas tirée quand on se taît : elle serait
+      // comptée comme dite, et le registre s'épuiserait en silence.
+      if (rythmeCourant.current === 'tresRapide') return;
+      setCommentaire(replique());
       retenirMemoire(prof.id, memoire.current);
     },
     [prof.id],
@@ -652,7 +730,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
     }
     partie.annulerDernierCoup();
     setVerdict(null);
-    repondreAuChoix(repliqueReprise(prof, memoire.current));
+    repondreAuChoix(() => repliqueReprise(prof, memoire.current));
   }, [monCamp, partie, prof, repondreAuChoix]);
 
   const demarrer = useCallback(
@@ -667,6 +745,10 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
       // forcerait le professeur à se répéter dès la deuxième.
       journal.current = [];
       salutation.current = null;
+      aDejaParle.current = false;
+      dernierCoupLe.current = 0;
+      rythmeCourant.current = 'pose';
+      reinitialiserRythme();
       nouvellePartie(memoire.current);
       setFinDite(false);
       setEnregistree(false);
@@ -929,7 +1011,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
                       variante="principal"
                       onClick={() => {
                         setVerdict(null);
-                        repondreAuChoix(repliqueGarder(prof, memoire.current));
+                        repondreAuChoix(() => repliqueGarder(prof, memoire.current));
                       }}
                     >
                       Garder

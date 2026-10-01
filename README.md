@@ -212,6 +212,11 @@ npm run icones                  # régénère les icônes PWA
 npm run captures                # régénère les captures du README
 npm run test:matchs             # matchs entre paliers, reproductibles
 npm run portraits               # reconvertit PROFS/*.jpg en WebP multi-tailles
+npm run voix figees <voix…>      # pré-génère l'audio des quatre professeurs
+npm run voix ranger <voix…>      # retire l'audio qu'aucune lecture ne demande
+npm run test:rythme             # début de partie, variété, silence en jeu rapide
+npm run test:fluidite           # apparition des visages, un commentaire à la fois
+npm run test:commentaires       # le texte affiché correspond à la position
 ```
 
 Les tests navigateur supposent qu'une préversion tourne sur le port 4173 et
@@ -351,6 +356,52 @@ La phrase de fond s'adapte au palier déclaré : un débutant s'entend dire
 complément technique, perte en centipions — appartient au rapport de fin de
 partie, qui se lit et se relit.
 
+**La longueur suit le rythme du joueur.** L'écart entre deux coups est mesuré
+à chaque fois :
+
+| écart | ce que dit le professeur |
+|---|---|
+| plus de 4 s | réaction, phrase de fond, et l'état de la position s'il est tranché |
+| 2 à 4 s | la réaction seule — sauf faute, toujours expliquée |
+| moins de 2 s | un mot — puis plus rien tant que la série dure |
+
+Une réplique complète arrive toujours en retard quand on enchaîne : le temps
+de la dire, le coup suivant est joué. Mieux vaut un silence qu'une parole qui
+court après la position.
+
+Le dernier palier ne se contente pas de raccourcir : il acquiesce **une fois**,
+puis se taît tant que la série continue. « Bien. Juste. Noté. Correct. » sur
+dix coups fait une mitraille, pas un professeur. Une faute rouvre la bouche
+immédiatement — elle est toujours expliquée, à n'importe quel rythme — et un
+coup posé rend au professeur sa parole entière.
+
+**Jamais la même phrase deux fois de suite.** La mémoire écarte ce qui a déjà
+servi, mais un registre épuisé repartait de la liste complète — et le tirage,
+déterministe, retombait sur la même phrase plusieurs coups d'affilée.
+Entendre « Bien, continuons » trois fois de suite est pire qu'une reprise
+tardive : la dernière tournure employée est désormais exclue en toute
+circonstance.
+
+Le tirage passe par trois paliers : d'abord ce qui n'a jamais été dit, puis ce
+qui n'a pas été dit dans cette partie, et seulement ensuite la liste entière.
+Sans le palier du milieu, un petit registre — trois façons d'accepter qu'on
+garde son coup — se retrouvait entièrement « déjà dit » dès la deuxième partie,
+et la règle se relâchait au point d'autoriser une répétition dans la partie en
+cours. Les registres sollicités à chaque coup comptent maintenant douze
+variantes par professeur, dans son propre caractère.
+
+**Le professeur ne resalue pas entre deux coups.** La salutation s'affiche
+quand il n'y a pas de verdict — et le verdict est retiré dès que l'élève garde
+son coup. « Bonjour… » revenait donc entre chaque coup, en alternance avec les
+commentaires. Une fois qu'il a commenté, il ne resalue plus jusqu'à la partie
+suivante.
+
+**L'accueil dispose d'un budget audio plus large** — quatre secondes au lieu
+de neuf cents millisecondes. Au lancement, le moteur se télécharge et se
+prépare : ce temps mort est précisément celui de la salutation. Avec le
+budget ordinaire, elle restait muette sur une connexion réelle, et le
+professeur qui a les blancs jouait son premier coup sans avoir rien dit.
+
 Le texte affiché **est** ce qui est dit : chaque phrase est révélée au moment
 où elle est prononcée. Auparavant le texte s'écrivait en entier pendant que la
 voix disait les phrases une à une, et les deux ne correspondaient pas.
@@ -379,6 +430,14 @@ assemblé à partir de fragments qui sont chacun une phrase complète :
 pré-générer chaque combinaison serait combinatoirement impossible, pré-générer
 chaque phrase est tractable. L'enchaînement s'entend comme une diction
 normale, puisque ce sont de vraies phrases et non des morceaux.
+
+Le piège est que la pré-génération doit découper **avec la même règle** que la
+lecture. Elle enregistrait d'abord les entrées de registre telles quelles, dont
+un tiers contient deux ou trois phrases : le fichier du bloc entier n'était
+jamais réclamé, et ses phrases partaient une à une en synthèse à la demande —
+le corpus semblait couvert, et le professeur se taisait quand même. Le corpus
+compte 626 phrases par voix, soit 2 504 fichiers. `npm run voix ranger` retire
+ceux qu'aucune lecture ne peut plus demander après un changement de registre.
 
 Trois sources, dans cet ordre :
 
@@ -554,10 +613,20 @@ qui vérifient ce qu'aucun test unitaire ne peut voir :
 | `test:rapport` | Analyse incrémentale complète, précision, moments charnières, graphique. |
 | `test:hors-ligne` | Installation du service worker, coupure du réseau, partie et moteur hors ligne. |
 | `test:mise-en-page` | Sept écrans, quatre largeurs, deux thèmes : aucun débordement horizontal, aucune cible tactile sous 44 px, aucune erreur de console. |
+| `test-rythme` | Format téléphone : le professeur parle avant son premier coup dans les deux couleurs, ne redit jamais la même phrase, abrège et se taît quand on enchaîne à trois coups par seconde. |
+| `test-commentaires` | Trois positions tranchées : le texte affiché correspond à la position réelle, du moteur jusqu'à la carte. |
 
 Ces tests ont trouvé des défauts qu'aucune relecture n'aurait montrés :
 détection de grille verrouillée sur un demi-pas, moteur répondant avant que
-le joueur ait choisi de reprendre son coup, moteur muet hors ligne.
+le joueur ait choisi de reprendre son coup, moteur muet hors ligne, salutation
+réécrite entre chaque coup, et deux tiers de l'audio pré-généré que la lecture
+ne pouvait pas réclamer.
+
+Un piège propre à ces tests : la réplique s'écrit phrase par phrase, chaque
+phrase attendant son audio. Deux relevés identiques ne prouvent donc rien — la
+frappe marque une pause entre deux phrases. Il faut plusieurs relevés de suite
+sans changement, sans quoi le test lit un préfixe et le compare comme s'il
+s'agissait du texte entier.
 
 ## Licences des ressources tierces
 

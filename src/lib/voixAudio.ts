@@ -42,10 +42,14 @@ function figees(): Promise<Record<string, string>> {
  * Délai au-delà duquel on renonce et on se tait.
  *
  * Le texte attend la voix plutôt que l'inverse : mieux vaut un instant de
- * silence avant la réplique qu'une voix parlant sur un texte déjà lu. Le
- * délai peut donc être plus généreux qu'il ne l'était.
+ * silence avant la réplique qu'une voix parlant sur un texte déjà lu.
+ *
+ * Deux secondes et demie, pas quatre : quand on enchaîne les coups, un coup
+ * dure moins que ça. Une voix qui arriverait au bout des quatre secondes
+ * parlerait du coup précédent — elle est de toute façon abandonnée à l'arrivée
+ * du coup suivant, autant renoncer plus tôt et laisser le texte seul.
  */
-const DELAI_MAX_MS = 4000;
+const DELAI_MAX_MS = 2500;
 
 interface SchemaVoix extends DBSchema {
   repliques: {
