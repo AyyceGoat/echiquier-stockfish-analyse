@@ -36,7 +36,7 @@ describe('actionDe', () => {
 describe('sansCoordonnees', () => {
   it('retire toute notation algébrique', () => {
     // C'est le filet de sécurité : rien ne doit atteindre la synthèse vocale
-    // sous forme de « Cg6 », que la voix écorche et qu'un débutant ne lit pas.
+    // sous forme de « Cg6 », qu'un débutant ne sait pas lire.
     for (const brut of ['Il fallait jouer Td1.', 'Après Cxe5, tout s’écroule.', 'Le coup e4 est juste.']) {
       expect(sansCoordonnees(brut)).not.toMatch(/\b[KQRBNCFTD]?[a-h][1-8]\b/);
     }

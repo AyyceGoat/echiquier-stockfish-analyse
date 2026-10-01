@@ -26,7 +26,7 @@ const FORMATS = [
   ['desktop', 1440, 900],
 ];
 
-const ECRANS = ['/', '/libre', '/assiste', '/apprendre', '/analyse', '/historique', '/reglages', '/voix'];
+const ECRANS = ['/', '/libre', '/assiste', '/apprendre', '/analyse', '/historique', '/reglages'];
 
 mkdirSync(OUT, { recursive: true });
 const nav = await puppeteer.launch(optionsLancement());
@@ -39,13 +39,6 @@ for (const theme of ['sombre', 'clair']) {
     page.on('console', (m) => {
       if (m.type() !== 'error') return;
       const texte = m.text();
-      // `/api/voix` est une fonction serverless : elle n'existe pas sur le
-      // serveur de développement, et son absence y produit un 404 attendu.
-      // Le point d'entrée est vérifié pour de bon par `test:deploye`, qui
-      // appelle l'adresse publique et exige un audio en retour.
-      if (/api\/voix/.test(texte) || (/404/.test(texte) && /Failed to load resource/.test(texte))) {
-        return;
-      }
       problemes.push(`[${theme}/${nom}] console : ${texte.slice(0, 220)}`);
     });
     page.on('pageerror', (e) => problemes.push(`[${theme}/${nom}] page : ${String(e).slice(0, 220)}`));

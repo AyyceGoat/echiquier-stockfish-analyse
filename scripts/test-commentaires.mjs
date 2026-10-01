@@ -77,9 +77,9 @@ const lireTexte = (page) =>
 /**
  * Attend que le texte cesse de bouger.
  *
- * La révélation est phrase par phrase, et chaque phrase attend son audio :
- * deux relevés identiques ne suffisent pas, la frappe marque une pause entre
- * deux phrases. On exige donc plusieurs relevés de suite sans changement.
+ * Le commentaire paraît d'un coup, mais il peut être REMPLACÉ : le verdict du
+ * moteur arrive après la salutation, et parfois après un premier jet. On exige
+ * donc plusieurs relevés de suite sans changement.
  */
 // Deux cents tours de 500 ms, soit cent secondes : sur un site déployé, la
 // première analyse attend le téléchargement du moteur — sept mégaoctets — et
@@ -134,21 +134,10 @@ for (const cas of CAS) {
    * rechargement est le seul montage qui lit la clé.
    */
   await page.goto(`${BASE}/#/assiste`, { waitUntil: 'networkidle2' });
-  // Voix coupée : ce test porte sur le TEXTE. Avec la voix, chaque phrase
-  // attend la fin de son audio avant que la suivante s'écrive, et la pause
-  // entre deux phrases dépasse n'importe quelle fenêtre de stabilité — le test
-  // lisait alors la première phrase en croyant lire la réplique entière.
-  await page.evaluate((fen) => {
-    const cle = 'echiquier.reglages.v1';
-    let r = {};
-    try {
-      r = JSON.parse(localStorage.getItem(cle) ?? '{}');
-    } catch {
-      r = {};
-    }
-    localStorage.setItem(cle, JSON.stringify({ ...r, voix: false }));
-    sessionStorage.setItem('echiquier.position-a-jouer', fen);
-  }, cas.fen);
+  await page.evaluate(
+    (fen) => sessionStorage.setItem('echiquier.position-a-jouer', fen),
+    cas.fen,
+  );
   await page.reload({ waitUntil: 'networkidle2' });
 
   await page.waitForFunction(

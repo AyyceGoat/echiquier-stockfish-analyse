@@ -20,6 +20,7 @@ import { Chess, type PieceSymbol } from 'chess.js';
 import { avecArticle, avecPossessif, NOMS } from './motifs.ts';
 import type { Classement } from './classification.ts';
 import type { MotifExplication } from './explications.ts';
+import type { PhasePartie } from './repertoireProfesseurs.ts';
 import type { NiveauEleve } from './professeurs.ts';
 
 /** Ce qu'un coup fait, en termes dicibles. */
@@ -150,12 +151,10 @@ function majuscule(t: string): string {
 /**
  * La phrase de fond, TOUJOURS capitalisée.
  *
- * Elle l'était auparavant au dernier moment, par `sansCoordonnees`, une fois
- * le commentaire assemblé. Les fichiers audio, eux, étaient pré-générés à
- * partir de la forme brute en minuscule : l'empreinte ne correspondait donc
- * pas, et la phrase repartait en synthèse à la demande — avec son délai, et
- * son silence possible. Ce qu'on dit et ce qu'on a enregistré doivent être le
- * même texte, au caractère près.
+ * Elle l'était auparavant au dernier moment, par `sansCoordonnees`, une fois le
+ * commentaire assemblé — ce qui marchait tant qu'on ne comparait pas le texte à
+ * autre chose. Capitaliser à la source rend la phrase identique partout où elle
+ * apparaît : dans la carte du professeur, dans le rapport et dans les tests.
  */
 export function phraseDeFond(c: ContenuParle): string {
   return majuscule(phraseBrute(c));
@@ -226,4 +225,27 @@ function phraseBrute(c: ContenuParle): string {
     return `${actionDe(c.coup)}.`.replace(/^v/, 'V');
   }
   return '';
+}
+
+/**
+ * À quel moment de la partie sommes-nous ?
+ *
+ * Trois critères, dans cet ordre, parce qu'aucun ne suffit seul. Le nombre de
+ * coups seul classerait une partie de dix coups terminée par des échanges
+ * massifs comme une ouverture ; le matériel seul classerait une ouverture de
+ * gambit, où rien n'a encore été pris, comme un milieu de partie.
+ *
+ *   - moins de dix coups joués et aucune pièce lourde échangée : ouverture ;
+ *   - au plus six figures sur l'échiquier, roi non compris : finale ;
+ *   - entre les deux : milieu de partie.
+ *
+ * Six figures, et non une évaluation en points : ce qui fait la finale, c'est
+ * qu'il reste peu de pièces à coordonner, pas leur valeur marchande.
+ */
+export function phaseDe(fen: string, ply: number): PhasePartie {
+  const placement = fen.split(' ')[0] ?? '';
+  const figures = (placement.match(/[qrbnQRBN]/g) ?? []).length;
+  if (figures <= 6) return 'finale';
+  if (ply < 20 && figures >= 12) return 'ouverture';
+  return 'milieu';
 }

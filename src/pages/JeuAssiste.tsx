@@ -44,10 +44,6 @@ import { PortraitProfesseur } from '../ui/PortraitProfesseur.tsx';
 import {
   commentaireFinPartie,
   commentaireLocal,
-  repliqueGarder,
-  reinitialiserRythme,
-  retenirReplique,
-  repliqueInterrompu,
   repliqueReprise,
   issueDe,
   palierDuProfesseur,
@@ -56,7 +52,7 @@ import {
   type CoupMarquant,
 } from '../lib/professeurs.ts';
 import { nouvellePartie, ouvrirMemoire, retenirMemoire } from '../lib/memoirePhrases.ts';
-import { repliquesAudio } from '../lib/voixAudio.ts';
+import { phaseDe } from '../lib/parole.ts';
 import {
   AffichageEval,
   Alerte,
@@ -168,7 +164,6 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
 
   /** Commentaire du professeur sur le dernier verdict, et sa frappe. */
   const [commentaire, setCommentaire] = useState('');
-  const [commentaireAffiche, setCommentaireAffiche] = useState('');
 
   const { jouerCoup, fin, trait, fenCourante } = partie;
   const monTour = configuree && !fin && trait === monCamp;
@@ -457,39 +452,17 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
         explication: verdict.explication,
         eleve: reglages.niveauEleve,
         rythme: rythmeCourant.current,
+        phase: phaseDe(verdict.fenAvant, partie.coups.length),
         memoire: memoire.current,
       })
       .then((texte) => {
         if (!vivant) return;
         aDejaParle.current = true;
-        // Le silence est un choix, pas un oubli : quand le rythme lui impose
-        // de se taire, il se taît vraiment. Reconnaître le coup ici revenait
-        // à parler quand même — « Je reprends. » à chaque coup d'une série.
-        if (texte === '') {
-          // Le silence n'est pas une brève : au coup suivant, le professeur a
-          // de nouveau droit à son mot.
-          retenirReplique(prof.id, '');
-          setCommentaire('');
-          return;
-        }
-        // Si le professeur parlait encore, il reconnaît le coup avant
-        // d'enchaîner : rester muet deux ou trois coups donnait l'impression
-        // qu'il avait décroché.
-        //
-        // Sauf au rythme le plus vif : là, sa réplique tient déjà en un mot, et
-        // la faire précéder de « Entendu, poursuivons. » la rallongeait au
-        // moment précis où il faut abréger.
-        const prefixe =
-          parleEncore.current && rythmeCourant.current !== 'tresRapide'
-            ? `${repliqueInterrompu(prof, memoire.current)} `
-            : '';
         // Les tournures ne sont retenues QU'UNE FOIS le commentaire affiché :
         // un commentaire préparé puis abandonné — l'élève reprend son coup —
         // ne doit pas condamner ses tournures.
         retenirMemoire(prof.id, memoire.current);
-        const dit = prefixe + texte;
-        retenirReplique(prof.id, dit);
-        setCommentaire(dit);
+        setCommentaire(texte);
       });
     return () => {
       vivant = false;
@@ -554,143 +527,33 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
   }, [fin, finDite, configuree, prof, monCamp, partie.coups.length, reglages.niveauEleve]);
 
   /**
-   * Prise de parole : le texte affiché EST ce qui est dit.
+   * Le professeur s'exprime par écrit, et tout de suite.
    *
-   * Trois défauts réglés ensemble :
+   * Il y avait ici une machine à faire coïncider le texte et la voix :
+   * révélation phrase par phrase, attente de l'audio, coupure du lecteur en
+   * cours, promesse de fin déclenchée à la main parce que mettre en pause
+   * n'émet pas `ended`. La voix a été retirée, et avec elle toute cette
+   * mécanique. Le commentaire s'affiche d'un coup, dès qu'il est calculé : un
+   * commentaire en retard sur le coup en cours ne peut plus exister, puisqu'il
+   * n'y a plus rien à attendre.
    *
-   *  - le texte s'écrivait en entier pendant que la voix disait les phrases
-   *    une à une : un paragraphe apparaissait, un autre disparaissait, et
-   *    l'écrit ne correspondait pas à l'oral ;
-   *  - jouer pendant que le professeur parlait le laissait muet deux ou trois
-   *    coups — la promesse d'une lecture interrompue ne se résolvait jamais,
-   *    puisque mettre en pause ne déclenche pas la fin de lecture ;
-   *  - les répliques se chevauchaient.
-   *
-   * On avance donc phrase par phrase : chaque phrase est révélée AU MOMENT où
-   * elle est dite. Sans voix, elle se révèle au rythme de la lecture.
+   * Reste l'animation de la bouche, qui n'attend rien non plus : une brève
+   * respiration quand une nouvelle réplique paraît, pour que le personnage ne
+   * soit pas une image fixe. Elle ne retarde pas le texte, elle le suit.
    */
-  const generation = useRef(0);
-  const lecteurEnCours = useRef<HTMLAudioElement | null>(null);
-  const parleEncore = useRef(false);
-
-  /**
-   * Attente maximale de l'audio avant d'afficher quand même.
-   *
-   * Assez pour un fichier pré-généré, trop court pour qu'un blanc se
-   * remarque.
-   */
-  const DELAI_AVANT_TEXTE_MS = 900;
-
-  /**
-   * L'accueil, lui, peut attendre davantage.
-   *
-   * Au lancement, le moteur se télécharge et se prépare : ce temps mort est
-   * précisément celui de la salutation. Lui accorder le même budget qu'à une
-   * réplique en cours de partie la laissait muette sur une connexion réelle —
-   * le professeur jouait son premier coup sans avoir rien dit.
-   */
-  const DELAI_ACCUEIL_MS = 4000;
+  const [respire, setRespire] = useState(false);
 
   useEffect(() => {
-    const mien = ++generation.current;
-
-    // Coupure NETTE, et surtout immédiate.
-    const precedent = lecteurEnCours.current;
-    if (precedent) {
-      precedent.pause();
-      // On déclenche la fin à la main : `pause()` n'émet pas `ended`, et la
-      // boucle de lecture restait suspendue sur une promesse jamais tenue.
-      precedent.dispatchEvent(new Event('ended'));
-      lecteurEnCours.current = null;
-    }
-
     if (!commentaire) {
-      setCommentaireAffiche('');
-      parleEncore.current = false;
+      setRespire(false);
       return;
     }
+    setRespire(true);
+    const duree = Math.min(2500, 600 + commentaire.length * 12);
+    const minuteur = window.setTimeout(() => setRespire(false), duree);
+    return () => clearTimeout(minuteur);
+  }, [commentaire]);
 
-    const perime = () => generation.current !== mien;
-    // L'accueil bénéficie d'un budget plus large : rien d'autre ne se joue à
-    // ce moment-là.
-    const estAccueil = commentaire === salutation.current;
-    const phrases = commentaire
-      .split(/(?<=[.!?…])\s+/)
-      .map((p) => p.trim())
-      .filter(Boolean);
-    const voix = reglages.voix ? reglages.voixProfesseurs?.[prof.id] : undefined;
-    const promesses = voix ? repliquesAudio(voix, commentaire) : [];
-    const reduit = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    let minuteurFrappe: number | undefined;
-
-    /** Révèle une phrase, à la frappe ou d'un coup. */
-    const revelerPhrase = (avant: string, phrase: string) =>
-      new Promise<void>((fini) => {
-        if (reduit) {
-          setCommentaireAffiche(avant + phrase);
-          return fini();
-        }
-        let i = 0;
-        minuteurFrappe = window.setInterval(() => {
-          if (perime()) {
-            clearInterval(minuteurFrappe);
-            return fini();
-          }
-          i += 1;
-          setCommentaireAffiche(avant + phrase.slice(0, i));
-          if (i >= phrase.length) {
-            clearInterval(minuteurFrappe);
-            fini();
-          }
-        }, 18);
-      });
-
-    parleEncore.current = true;
-    void (async () => {
-      let ecrit = '';
-      for (const [rang, phrase] of phrases.entries()) {
-        if (perime()) return;
-        const url = await Promise.race([
-          promesses[rang] ?? Promise.resolve(null),
-          // Première phrase : on ne fait attendre l'écran qu'un court instant.
-          // Les suivantes sont déjà résolues, l'audio ayant été demandé en
-          // parallèle dès le début.
-          new Promise<null>((r) =>
-            setTimeout(
-              () => r(null),
-              rang === 0 ? (estAccueil ? DELAI_ACCUEIL_MS : DELAI_AVANT_TEXTE_MS) : 0,
-            ),
-          ),
-        ]).catch(() => null);
-        if (perime()) return;
-
-        const frappe = revelerPhrase(ecrit, phrase);
-        const son = url
-          ? new Promise<void>((fini) => {
-              const lecteur = new Audio(url);
-              lecteurEnCours.current = lecteur;
-              lecteur.addEventListener('ended', () => fini(), { once: true });
-              lecteur.addEventListener('error', () => fini(), { once: true });
-              void lecteur.play().catch(() => fini());
-            })
-          : Promise.resolve();
-        // La phrase suivante attend la plus lente des deux : on ne double
-        // jamais la voix, on ne la laisse jamais parler dans le vide.
-        await Promise.all([frappe, son]);
-        ecrit += phrase + ' ';
-      }
-      if (!perime()) parleEncore.current = false;
-    })();
-
-    return () => {
-      clearInterval(minuteurFrappe);
-      lecteurEnCours.current?.pause();
-      lecteurEnCours.current = null;
-    };
-  }, [commentaire, reglages.voix, reglages.voixProfesseurs, prof.id]);
-
-
-  const parleEnCours = commentaire.length > 0 && commentaireAffiche.length < commentaire.length;
 
 
 
@@ -710,27 +573,17 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
   const rythmeCourant = useRef<'pose' | 'rapide' | 'tresRapide'>('pose');
 
   /**
-   * Accusé de réception d'un choix — garder le coup, ou le reprendre.
+   * Accusé de réception d'une reprise de coup.
    *
-   * Muet quand l'élève enchaîne. Ces répliques tombent sur le clic, donc une
-   * fois par coup : à trois coups par seconde, elles remplissaient à elles
-   * seules toute la parole du professeur, et le commentaire du coup n'avait
-   * plus la place d'être dit.
+   * Garder son coup ne donne plus lieu à réplique : rien n'a changé sur
+   * l'échiquier, et l'accusé de réception effaçait le commentaire du coup avant
+   * qu'on ait eu le temps de le lire — « D'accord. Voyons la suite. » à la place
+   * de l'explication. Reprendre, en revanche, change la position : le
+   * commentaire précédent ne vaut plus, il faut le remplacer.
    */
   const repondreAuChoix = useCallback(
     (replique: () => string) => {
-      // La réplique n'est même pas tirée quand on se taît : elle serait
-      // comptée comme dite, et le registre s'épuiserait en silence.
-      //
-      // Dès que l'élève n'est plus posé, le professeur ne commente plus le
-      // clic : ces accusés de réception tombent une fois par coup et tiennent
-      // en un mot, si bien qu'à trois secondes par coup ils se collaient au
-      // commentaire — « Bien. » puis « D'accord. » — et faisaient à eux seuls
-      // la mitraille qu'on cherchait à supprimer.
-      if (rythmeCourant.current !== 'pose') return;
-      const texte = replique();
-      setCommentaire(texte);
-      retenirReplique(prof.id, texte);
+      setCommentaire(replique());
       retenirMemoire(prof.id, memoire.current);
     },
     [prof.id],
@@ -762,7 +615,6 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
       aDejaParle.current = false;
       dernierCoupLe.current = 0;
       rythmeCourant.current = 'pose';
-      reinitialiserRythme();
       nouvellePartie(memoire.current);
       setFinDite(false);
       setEnregistree(false);
@@ -987,12 +839,12 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
               <div className="w-24 shrink-0 sm:w-28">
                 <PortraitProfesseur
                   prof={prof}
-                  parle={parleEnCours}
+                  parle={respire}
                   cleEntree={prof.id}
                   className="pp-pastille"
                 />
               </div>
-              <p className="min-h-[7rem] flex-1 text-sm leading-relaxed">{commentaireAffiche}</p>
+              <p className="min-h-[7rem] flex-1 text-sm leading-relaxed">{commentaire}</p>
             </div>
           </Carte>
 
@@ -1023,10 +875,7 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
                     <Bouton onClick={reprendreLeCoup}>Reprendre</Bouton>
                     <Bouton
                       variante="principal"
-                      onClick={() => {
-                        setVerdict(null);
-                        repondreAuChoix(() => repliqueGarder(prof, memoire.current));
-                      }}
+                      onClick={() => setVerdict(null)}
                     >
                       Garder
                     </Bouton>

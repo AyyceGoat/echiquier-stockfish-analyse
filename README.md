@@ -33,9 +33,9 @@ motif, et les exercices correspondant aux erreurs relevées dans vos parties.
 ### Quatre professeurs
 
 En jeu assisté, vous choisissez un professeur et vous lui dites votre niveau.
-Il joue alors à la force correspondante et commente vos coups avec sa voix.
+Il joue alors à la force correspondante et commente vos coups par écrit.
 
-| Professeur | Accompagne | Voix |
+| Professeur | Accompagne | Ton |
 |---|---|---|
 | **L'Homme Ultime** | Joueurs confirmés | Souverain. Ne console jamais, ne doute jamais, ne répète pas deux fois. |
 | **Ephraim** | Niveau club | Précis et méthodique. Remonte à la structure, donne les coups dans l'ordre. |
@@ -212,9 +212,7 @@ npm run icones                  # régénère les icônes PWA
 npm run captures                # régénère les captures du README
 npm run test:matchs             # matchs entre paliers, reproductibles
 npm run portraits               # reconvertit PROFS/*.jpg en WebP multi-tailles
-npm run voix figees <voix…>      # pré-génère l'audio des quatre professeurs
-npm run voix ranger <voix…>      # retire l'audio qu'aucune lecture ne demande
-npm run test:rythme             # début de partie, variété, silence en jeu rapide
+npm run test:rythme             # une partie entière, vite, sans une répétition
 npm run test:fluidite           # apparition des visages, un commentaire à la fois
 npm run test:commentaires       # le texte affiché correspond à la position
 ```
@@ -336,141 +334,124 @@ couverture de l'image — et tombe à 0,52 sur le même cas.
 
 Les commentaires étaient assemblés à partir de sept registres — ouverture,
 constat, correction, menace, état de la position, principe, clôture — et
-recopiaient la notation du moteur : « Cg6 », « Td1 ». À l'écrit dans un
-rapport, cela se lit ; **dit à voix haute pendant une partie, c'est un
-exposé**, et la synthèse vocale écorche la notation.
+recopiaient la notation du moteur : « Cg6 », « Td1 ». À l'écrit dans un rapport
+cela se lit ; **affiché entre deux coups, c'est un exposé que personne ne lit.**
 
-Deux règles commandent maintenant `parole.ts` :
+Deux règles commandent `parole.ts` :
 
-- **aucune notation à l'oral.** Le coup joué reste visible en notation dans la
-  carte de verdict, qui est un affichage et non une parole. La phrase parlée
-  nomme les pièces : « votre cavalier est en prise ; le fou était plus
-  utile ». Un filet de sécurité retire toute coordonnée qui se glisserait
-  malgré tout dans une phrase ;
-- **court.** Une réaction de deux ou trois mots dans la voix du professeur,
-  puis une phrase de fond. Rien d'autre, sauf quand la position est tranchée.
+- **pas de notation dans la phrase.** Le coup joué reste visible en notation dans
+  la carte de verdict, qui est un affichage et non une phrase. La phrase nomme
+  les pièces : « votre cavalier est en prise ; le fou était plus utile ». Un
+  filet de sécurité retire toute coordonnée qui s'y glisserait malgré tout ;
+- **court.** Une réaction de quelques mots dans le ton du professeur, puis ce que
+  le coup fait, puis un mot sur le moment de la partie — ou sur l'état de la
+  position quand il est tranché.
 
-La phrase de fond s'adapte au palier déclaré : un débutant s'entend dire
-« son cavalier attaque deux de vos pièces à la fois », un joueur avancé
-« vous vous exposez à une fourchette ». Le détail complet — variantes,
-complément technique, perte en centipions — appartient au rapport de fin de
-partie, qui se lit et se relit.
+La phrase de fond s'adapte au palier déclaré : un débutant lit « son cavalier
+attaque deux de vos pièces à la fois », un joueur avancé « vous vous exposez à
+une fourchette ». Le détail complet — variantes, complément technique, perte en
+centipions — appartient au rapport de fin de partie, qui se lit et se relit.
 
-**La longueur suit le rythme du joueur.** L'écart entre deux coups est mesuré
-à chaque fois :
+#### Jamais la même phrase dans une partie
 
-| écart | ce que dit le professeur |
+C'est la règle principale, et tout le reste en découle. Le tirage d'une tournure
+passe par quatre paliers, du plus exigeant au moins exigeant :
+
+1. jamais dite, et dont la **première phrase** n'a pas déjà servi dans la partie ;
+2. jamais dite, toutes parties confondues ;
+3. pas encore dite dans **cette** partie ;
+4. n'importe laquelle, sauf la dernière employée.
+
+Le quatrième palier n'est atteint que si le registre est épuisé. Trois défauts
+successifs ont conduit à cette forme :
+
+- **le garde ne valait que par registre.** « Bien. » figurait dans les brèves
+  comme dans les réactions neutres : deux « Bien. » de suite passaient, un de
+  chaque liste. Le lecteur ne lit pas des registres, il lit un professeur ;
+- **l'oreille, et l'œil, retiennent le début d'une réplique.** « D'accord. »
+  ouvre une brève et aussi « D'accord. Voyons la suite. » : deux entrées
+  distinctes, deux tirages légitimes, et le même mot deux fois dans la partie ;
+- **un registre trop maigre cède en silence.** Mesuré sur une partie réelle de
+  trente coups joués à deux par seconde : les brèves, vingt-quatre par
+  professeur, s'épuisaient au vingt-huitième coup et « Je suis le fil. »
+  revenait. Elles sont trente-six.
+
+Les comptes ne sont donc pas des chiffres ronds mais des budgets. Une partie de
+quarante coups produit une vingtaine de bons coups, une quinzaine
+d'imprécisions, quelques fautes lourdes et quelques coups de théorie — d'où
+vingt-huit réactions pour le bon coup, vingt-quatre pour l'imprécision, vingt
+pour la faute lourde et vingt pour le coup attendu, **par professeur**, plus
+trente-six brèves et douze remarques par temps de la partie. Un test unitaire
+garde ces planchers, et un autre vérifie qu'aucune tournure n'est partagée par
+deux professeurs dans le même registre : les quatre ne disent jamais la même
+chose dans la même situation.
+
+#### La longueur suit le rythme du joueur
+
+L'écart entre deux coups est mesuré à chaque fois :
+
+| écart | ce que lit le joueur |
 |---|---|
-| plus de 4 s | réaction, phrase de fond, et l'état de la position s'il est tranché |
-| 2 à 4 s | la réaction seule — sauf faute, toujours expliquée |
-| moins de 2 s | un mot — et jamais deux brèves de suite |
+| plus de 4 s | la réaction, ce que le coup fait, et un mot sur le moment de la partie |
+| 2 à 4 s | la réaction seule |
+| moins de 2 s | une brève, une ligne |
 
-Une réplique complète arrive toujours en retard quand on enchaîne : le temps
-de la dire, le coup suivant est joué. Mieux vaut un silence qu'une parole qui
-court après la position.
+Une faute est expliquée **à n'importe quel rythme** : abréger ne doit pas revenir
+à taire ce qui coûte la partie.
 
-Les deux paliers rapides ne se contentent pas de raccourcir : **jamais deux
-brèves de suite.** Un mot, puis rien, puis un mot. « Bien. Juste. Noté.
-Correct. » sur dix coups fait une mitraille, pas un professeur — et la mitraille
-ne venait pas d'un seul registre : un acquiescement sous deux secondes, puis une
-réaction seule entre deux et quatre, sonnent pareil. La règle porte donc sur la
-longueur de ce qui a été DIT, pas sur la branche qui l'a produit. Le silence,
-lui, n'est pas une brève : après lui le mot est de nouveau permis, ce qui évite
-l'autre excès — un professeur devenu muet pour le reste de la partie.
+Le texte paraît d'un coup, dès qu'il est calculé. Il n'y a plus de révélation
+progressive, plus d'attente, et donc plus de commentaire en retard sur un coup
+déjà passé. Mesuré sur une partie de trente coups à deux coups par seconde :
+deux à quatre coups passent sans ligne nouvelle, parce que le moteur abandonne
+parfois le jugement du coup du joueur pour rendre le sien. C'est préférable à une
+ligne qui arriverait après le coup suivant.
 
-Une faute rouvre la bouche immédiatement — elle est toujours expliquée, à
-n'importe quel rythme — et un coup posé rend au professeur sa parole entière.
+#### Trois remarques par temps de la partie
 
-**Jamais la même phrase deux fois de suite.** La mémoire écarte ce qui a déjà
-servi, mais un registre épuisé repartait de la liste complète — et le tirage,
-déterministe, retombait sur la même phrase plusieurs coups d'affilée.
-Entendre « Bien, continuons » trois fois de suite est pire qu'une reprise
-tardive : la dernière tournure employée est désormais exclue en toute
-circonstance, dans tous les registres à la fois, et jusqu'à la première phrase :
-« D'accord. » ouvre un acquiescement et aussi « D'accord. Voyons la suite. » —
-deux entrées distinctes, donc deux tirages légitimes, et pourtant le joueur
-entend deux fois le même mot dans la même partie. Les tournures dont l'ouverture
-a déjà servi sont donc écartées en priorité.
+Une partie équilibrée ne donne rien à annoncer — ni « vous êtes gagnant », ni
+« c'est perdu » — et le commentaire se réduisait alors à la réaction et au coup.
+Cette place est désormais occupée par une remarque sur le moment de la partie,
+car on n'enseigne pas la même chose selon qu'on développe, qu'on manœuvre ou
+qu'on pousse un pion passé. La phase se lit sur la position : six figures ou
+moins, c'est une finale ; moins de dix coups avec encore douze figures, une
+ouverture ; entre les deux, un milieu de partie.
 
-« Bien. » figure dans les acquiescements comme dans les réactions neutres : un
-garde par registre laissait passer deux « Bien. » de suite, un de chaque liste.
-Le joueur n'entend pas des registres, il entend une voix.
+#### Le professeur parle avant le premier coup
 
-Le tirage passe par trois paliers : d'abord ce qui n'a jamais été dit, puis ce
-qui n'a pas été dit dans cette partie, et seulement ensuite la liste entière.
-Sans le palier du milieu, un petit registre — trois façons d'accepter qu'on
-garde son coup — se retrouvait entièrement « déjà dit » dès la deuxième partie,
-et la règle se relâchait au point d'autoriser une répétition dans la partie en
-cours. Les registres sollicités à chaque coup comptent maintenant douze
-variantes par professeur, dans son propre caractère.
+Il s'exprime dès l'ouverture de l'écran, dans les deux couleurs, et avant de
+jouer son premier coup quand il a les blancs — mesuré sous cent millisecondes.
+Et il ne resalue plus entre deux coups : la salutation s'affichait dès qu'il n'y
+avait pas de verdict, et le verdict est retiré quand l'élève garde son coup, si
+bien que « Bonjour… » revenait en alternance avec les commentaires.
 
-**Le professeur ne resalue pas entre deux coups.** La salutation s'affiche
-quand il n'y a pas de verdict — et le verdict est retiré dès que l'élève garde
-son coup. « Bonjour… » revenait donc entre chaque coup, en alternance avec les
-commentaires. Une fois qu'il a commenté, il ne resalue plus jusqu'à la partie
-suivante.
+Garder son coup ne donne plus lieu à réplique du tout : rien n'a changé sur
+l'échiquier, et l'accusé de réception effaçait l'explication avant qu'on ait eu
+le temps de la lire. Reprendre son coup, en revanche, change la position : le
+commentaire précédent ne vaut plus, il est remplacé.
 
-**L'accueil dispose d'un budget audio plus large** — quatre secondes au lieu
-de neuf cents millisecondes. Au lancement, le moteur se télécharge et se
-prépare : ce temps mort est précisément celui de la salutation. Avec le
-budget ordinaire, elle restait muette sur une connexion réelle, et le
-professeur qui a les blancs jouait son premier coup sans avoir rien dit.
+### La voix a été retirée
 
-Le texte affiché **est** ce qui est dit : chaque phrase est révélée au moment
-où elle est prononcée. Auparavant le texte s'écrivait en entier pendant que la
-voix disait les phrases une à une, et les deux ne correspondaient pas.
+L'application a eu pendant un temps quatre voix neuronales, pré-générées par le
+service d'`edge-tts` : 2 867 fichiers MP3, 40 Mio, un manifeste de 197 Kio, une
+fonction serverless pour le texte variable, un cache IndexedDB et une page
+d'écoute. Tout cela a été **supprimé**, pas désactivé.
 
-### Les voix des professeurs
+Ce que la voix imposait au texte a disparu avec elle, et c'est le vrai gain :
 
-La synthèse vocale du navigateur a été essayée puis retirée. Elle est
-mécanique sur Windows, et surtout elle n'offre en pratique qu'une voix par
-genre : les quatre professeurs sonnaient comme deux personnes parlant à des
-vitesses différentes.
+- le commentaire s'écrivait phrase par phrase, chaque phrase attendant la fin de
+  son audio. Il paraît maintenant d'un coup ;
+- la première phrase attendait son fichier jusqu'à deux secondes et demie, et
+  jusqu'à quatre pour la salutation. Plus rien n'attend ;
+- une formule entière — « Ah, vous avez joué ça. » — n'existait que pour une
+  raison : quand le professeur parlait encore et que l'élève jouait, il fallait
+  reconnaître le coup avant d'enchaîner. Elle revenait coup après coup et se
+  lisait comme un tic. Elle est partie avec sa raison d'être ;
+- la pré-génération imposait que le texte soit figé au caractère près, ce qui
+  interdisait de le retoucher sans régénérer quarante mégaoctets d'audio.
 
-Les voix viennent des voix neuronales de Microsoft, par le même service que
-`edge-tts` — gratuit, sans compte, sans clé, sans carte. Vingt-trois voix
-capables de parler français ont été mises à l'écoute sur `#/voix` ; quatre
-sont retenues :
-
-| professeur | voix |
-|---|---|
-| L'Homme Ultime | `fr-FR-HenriNeural` |
-| Ephraim | `fr-FR-RemyMultilingualNeural` |
-| Johana | `fr-FR-EloiseNeural` |
-| Serena | `fr-FR-VivienneMultilingualNeural` |
-
-**L'unité de synthèse est la phrase, pas le commentaire.** Un commentaire est
-assemblé à partir de fragments qui sont chacun une phrase complète :
-pré-générer chaque combinaison serait combinatoirement impossible, pré-générer
-chaque phrase est tractable. L'enchaînement s'entend comme une diction
-normale, puisque ce sont de vraies phrases et non des morceaux.
-
-Le piège est que la pré-génération doit découper **avec la même règle** que la
-lecture. Elle enregistrait d'abord les entrées de registre telles quelles, dont
-un tiers contient deux ou trois phrases : le fichier du bloc entier n'était
-jamais réclamé, et ses phrases partaient une à une en synthèse à la demande —
-le corpus semblait couvert, et le professeur se taisait quand même. Le corpus
-compte 626 phrases par voix, soit 2 504 fichiers. `npm run voix ranger` retire
-ceux qu'aucune lecture ne peut plus demander après un changement de registre.
-
-Trois sources, dans cet ordre :
-
-1. `npm run voix figees <voix…>` pré-génère tout l'invariable, livré avec
-   l'application ;
-2. le texte variable déjà entendu vient d'IndexedDB, conservé définitivement ;
-3. sinon `/api/voix` le synthétise, et le résultat entre au cache.
-
-**Et si rien n'aboutit en deux secondes et demie, le professeur se tait.** Le
-repli sur la voix du navigateur a été explicitement écarté : mieux vaut le
-silence qu'une voix désagréable. Le commentaire s'écrit à l'écran pendant ce
-délai, et une voix qui démarrerait après coup parlerait sur un texte déjà lu.
-
-La fonction `/api/voix` réimplémente le protocole en JavaScript, le client de
-référence étant en Python. Deux pièges y sont documentés : l'en-tête
-`Sec-MS-GEC`, empreinte d'un horodatage arrondi à cinq minutes concaténé au
-jeton public, et la **version de Chromium annoncée**, que le service valide —
-une version trop ancienne fait échouer la connexion par un 403. À faire
-suivre quand Edge avance.
+Un contrôle du test déployé vérifie que rien ne répond plus : ni
+`/voix/manifeste.json`, ni un fichier d'aperçu, ni `/api/voix`, et qu'aucun
+élément `<audio>` n'est créé dans la page. Supprimer n'est pas désactiver.
 
 ### Aucun script en ligne dans le document
 
@@ -627,20 +608,26 @@ qui vérifient ce qu'aucun test unitaire ne peut voir :
 | `test:rapport` | Analyse incrémentale complète, précision, moments charnières, graphique. |
 | `test:hors-ligne` | Installation du service worker, coupure du réseau, partie et moteur hors ligne. |
 | `test:mise-en-page` | Sept écrans, quatre largeurs, deux thèmes : aucun débordement horizontal, aucune cible tactile sous 44 px, aucune erreur de console. |
-| `test-rythme` | Format téléphone : le professeur parle avant son premier coup dans les deux couleurs, ne redit jamais la même phrase, abrège et se taît quand on enchaîne à trois coups par seconde. |
-| `test-commentaires` | Trois positions tranchées : le texte affiché correspond à la position réelle, du moteur jusqu'à la carte. |
+| `test:rythme` | Format téléphone, **une partie entière** jouée à deux coups par seconde contre le moteur : aucune phrase ne revient, le professeur parle avant son premier coup dans les deux couleurs, et il développe quand on lui laisse le temps. |
+| `test:commentaires` | Trois positions tranchées : le texte affiché correspond à la position réelle, du moteur jusqu'à la carte. |
 
 Ces tests ont trouvé des défauts qu'aucune relecture n'aurait montrés :
-détection de grille verrouillée sur un demi-pas, moteur répondant avant que
-le joueur ait choisi de reprendre son coup, moteur muet hors ligne, salutation
-réécrite entre chaque coup, et deux tiers de l'audio pré-généré que la lecture
-ne pouvait pas réclamer.
+détection de grille verrouillée sur un demi-pas, moteur répondant avant que le
+joueur ait choisi de reprendre son coup, moteur muet hors ligne, salutation
+réécrite entre chaque coup, et un registre de brèves qui s'épuisait au
+vingt-huitième coup d'une partie rapide.
 
-Un piège propre à ces tests : la réplique s'écrit phrase par phrase, chaque
-phrase attendant son audio. Deux relevés identiques ne prouvent donc rien — la
-frappe marque une pause entre deux phrases. Il faut plusieurs relevés de suite
-sans changement, sans quoi le test lit un préfixe et le compare comme s'il
-s'agissait du texte entier.
+Deux pièges propres au test de rythme, et la raison pour laquelle il est écrit
+ainsi :
+
+- **garder son coup ne remplace plus le commentaire**, donc le texte du coup
+  précédent reste affiché jusqu'au verdict suivant. Relever l'écran à un instant
+  choisi enregistrait deux fois la même réplique et faisait crier à la
+  répétition. Le test attend que le texte CHANGE, et distingue un coup resté sans
+  réponse d'une phrase répétée ;
+- **un tap posé pendant que le moteur réfléchit est refusé sans un mot.** Le test
+  vérifie que l'empreinte de l'échiquier a changé avant de juger ce qui est
+  écrit, sinon il comptait un professeur muet là où personne n'avait joué.
 
 ## Licences des ressources tierces
 

@@ -4,7 +4,6 @@
  * Quatre défauts signalés, vérifiés ici sur le produit :
  *
  *   - les commentaires s'empilaient au lieu de se remplacer ;
- *   - la voix arrivait deux à trois secondes après le texte ;
  *   - en jouant vite, les paroles se chevauchaient ;
  *   - il fallait une dizaine de secondes avant la première réplique.
  *
@@ -171,11 +170,11 @@ verifier(
   longueurs.join(' / '),
 );
 
-// --- 7. Une seule voix à la fois ------------------------------------------
-const lecteurs = await page.evaluate(
-  () => [...document.querySelectorAll('audio')].filter((a) => !a.paused).length,
-);
-verifier(lecteurs <= 1, 'Une seule réplique parle à la fois', `${lecteurs} lecteurs actifs`);
+// --- 7. Aucun lecteur, aucune attente -------------------------------------
+// La voix a été retirée : plus rien ne doit être créé pour la lire, et plus
+// rien ne doit retarder le texte.
+const lecteurs = await page.evaluate(() => document.querySelectorAll('audio, video').length);
+verifier(lecteurs === 0, 'Aucun lecteur audio dans la page', `${lecteurs} lecteur(s)`);
 
 // --- 5. La liste des coups est-elle repliée ? -----------------------------
 const replies = await page.evaluate(() => {

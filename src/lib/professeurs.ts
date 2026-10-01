@@ -6,7 +6,7 @@
  *   - un niveau de prédilection, qui désigne les ÉLÈVES qu'il accompagne et
  *     la force à laquelle il joue contre eux — pas sa propre force : les
  *     quatre sont des joueurs très forts ;
- *   - une voix, c'est-à-dire une façon de dire la même analyse.
+ *   - une voix, c'est-à-dire une façon d'écrire la même analyse.
  *
  * Architecture du commentaire — pourquoi cette forme :
  *
@@ -25,16 +25,16 @@
 
 import type { Classement } from './classification.ts';
 import {
-  ACQUIESCE,
-  COUP_GARDE,
+  BREVES,
+  PHASES,
   FIN_BEAU_COUP,
-  INTERROMPU,
   REACTIONS,
   REPRISE_ACCORDEE,
   FIN_CONSEIL,
   FIN_OUVERTURES,
   FIN_PIVOT,
   LECON_MOTIF,
+  type PhasePartie,
   SALUTATIONS,
   type IssuePartie,
 } from './repertoireProfesseurs.ts';
@@ -207,7 +207,7 @@ export function palierDuProfesseur(prof: FicheProfesseur, eleve: NiveauEleve): s
 
 export interface ContexteCommentaire {
   classement: Classement;
-  /** Coup joué, en notation algébrique. Sert à l'affichage, jamais à la voix. */
+  /** Coup joué, en notation algébrique. Sert à l'affichage, jamais au commentaire. */
   coupSan: string;
   /**
    * Position d'où le coup a été joué.
@@ -235,11 +235,19 @@ export interface ContexteCommentaire {
   /**
    * Rythme du joueur, mesuré entre ses deux derniers coups.
    *
-   * Une réplique complète arrive toujours en retard quand l'élève enchaîne :
-   * le temps de la dire, deux coups ont été joués. Le professeur raccourcit
-   * donc, jusqu'à se taire quand le coup n'appelle rien.
+   * Un commentaire développé n'a pas le temps d'être lu quand l'élève enchaîne :
+   * le temps de le parcourir, deux coups ont été joués. Le professeur
+   * raccourcit donc.
    */
   rythme?: 'pose' | 'rapide' | 'tresRapide';
+  /**
+   * Temps de la partie où l'on se trouve.
+   *
+   * Sert à ce que le professeur enseigne quelque chose quand la position n'a
+   * rien d'annonçable : ni gagnante, ni perdue. Il parle alors du moment —
+   * développer, manœuvrer, pousser un pion passé ne sont pas la même chose.
+   */
+  phase?: PhasePartie;
   /**
    * Évaluation APRÈS le coup, en centipions, du point de vue de l'élève.
    *
@@ -319,48 +327,12 @@ const derniereDe = new Map<string, string>();
 /**
  * Dernière tournure rendue, tous registres confondus.
  *
- * Le garde par registre ne suffit pas : « Bien. » figure dans les
- * acquiescements ET dans les réactions neutres, si bien qu'il pouvait sortir
- * deux coups de suite, une fois de chaque liste. Le joueur n'entend pas des
- * registres, il entend une voix — l'interdiction est donc globale.
+ * Le garde par registre ne suffit pas : « Bien. » figurait dans les brèves ET
+ * dans les réactions neutres, si bien qu'il pouvait sortir deux coups de suite,
+ * une fois de chaque liste. Le lecteur ne lit pas des registres, il lit un
+ * professeur — l'interdiction est donc globale.
  */
 let derniereDite = '';
-
-/**
- * La dernière réplique du professeur tenait-elle en un mot ?
- *
- * Sert à ne jamais en enchaîner deux. « Bien. » puis « Juste. » au coup
- * suivant, c'est la mitraille que le jeu rapide produisait — et elle ne venait
- * pas d'un seul registre : un acquiescement à moins de deux secondes, puis une
- * réaction seule entre deux et quatre, sonnent pareil. La règle porte donc sur
- * ce qui a été DIT, pas sur la branche qui l'a produit.
- */
-const dernierBref = new Map<string, boolean>();
-
-/** Au-delà, une réplique n'est plus une brève mais une phrase. */
-const BREVE_MAX = 20;
-
-/**
- * Nouvelle partie : le professeur n'a encore rien dit.
- *
- * `derniereDe` n'est PAS remise à zéro — ne pas redire la même phrase deux
- * fois de suite vaut aussi par-dessus le changement de partie.
- */
-export function reinitialiserRythme(): void {
-  dernierBref.clear();
-}
-
-/**
- * Enregistre une réplique dite ailleurs que par `commenter`.
- *
- * Les accusés de réception d'un choix — garder le coup, le reprendre — ne
- * passent pas par le commentaire, et sont brefs par nature. Sans les déclarer
- * ici, « Bien. » dit par le commentaire et « D'accord. » dit par le bouton se
- * suivaient sans que la règle des brèves ne voie rien.
- */
-export function retenirReplique(idProfesseur: string, texte: string): void {
-  dernierBref.set(idProfesseur, texte.length > 0 && texte.length <= BREVE_MAX);
-}
 
 function piocherNeuf(liste: string[], graine: string, memoire?: MemoirePhrases): string {
   if (liste.length === 0) return '';
@@ -451,8 +423,8 @@ export const commentaireLocal: MoteurCommentaire = {
    * L'assemblage précédent empilait ouverture, constat, correction, menace,
    * état de la position, principe et clôture — jusqu'à sept propositions,
    * truffées de « Cg6 » et de « Td1 ». À l'écrit dans un rapport, cela se
-   * lit ; dit à voix haute pendant une partie, c'est un exposé, et la
-   * synthèse vocale écorche la notation.
+   * lit ; affiché pendant une partie, entre deux coups, c'est un exposé que
+   * personne ne lit.
    *
    * On garde donc l'essentiel : une réaction brève dans la voix du
    * professeur, puis ce que le coup fait, en français. Le détail complet
@@ -466,30 +438,16 @@ export const commentaireLocal: MoteurCommentaire = {
     /**
      * Le rythme commande la longueur.
      *
-     * Posé : réaction et phrase de fond. Rapide : la réaction seule, sauf
-     * faute. Très rapide : un mot, puis le silence tant que la série dure —
-     * mieux vaut se taire qu'une parole qui court après le coup suivant. La
+     * Posé : réaction, phrase de fond, et un mot sur le moment de la partie.
+     * Rapide : la réaction seule. Très rapide : une ligne, pas davantage —
+     * personne ne lit trois phrases quand il joue trois coups par seconde. La
      * faute, elle, est expliquée à n'importe quel rythme.
      */
     const rythme = ctx.rythme ?? 'pose';
     const grave = ctx.classement === 'gaffe' || ctx.classement === 'erreur';
-    const presse = rythme === 'rapide' || rythme === 'tresRapide';
 
-    /**
-     * Jamais deux brèves de suite : un mot, puis rien, puis un mot.
-     *
-     * La longueur de ce qui a été dit n'est PAS enregistrée ici. `commenter`
-     * peut être appelée deux fois pour le même coup — React réexécute ses
-     * effets — et une réplique préparée n'est pas une réplique dite : l'élève
-     * peut reprendre son coup. C'est l'écran qui déclare ce qu'il a affiché,
-     * par `retenirReplique`. Ici on ne fait que lire.
-     *
-     * Le silence n'est pas une brève : après lui, le professeur a de nouveau
-     * droit à son mot. Une faute, elle, est expliquée à n'importe quel rythme.
-     */
-    if (presse && !grave && dernierBref.get(prof.id)) return '';
     if (rythme === 'tresRapide' && !grave) {
-      return piocherNeuf(ACQUIESCE[prof.id] ?? [], graine, memoire);
+      return piocherNeuf(BREVES[prof.id] ?? [], graine, memoire);
     }
 
     // 1. Réaction, en deux ou trois mots.
@@ -499,7 +457,7 @@ export const commentaireLocal: MoteurCommentaire = {
      *
      * « Voilà le bon coup. Ce coup est trop timide. » : les deux moitiés
      * venaient de deux sources — l'étiquette du moteur, plutôt bonne, et le
-     * motif, critique — et se contredisaient à voix haute. Un coup jouable mais
+     * motif, critique — et se contredisaient dans la même réplique. Un coup jouable mais
      * mou se commente au ton neutre, pas au ton de l'éloge.
      */
     const tiede = ctx.explication?.motif === 'passif' || ctx.explication?.motif === 'occasion-manquee';
@@ -532,15 +490,26 @@ export const commentaireLocal: MoteurCommentaire = {
       }),
     );
 
-    // 3. L'état de la position, et seulement quand il est tranché. Le répéter
-    //    à chaque coup dans une partie équilibrée serait du remplissage.
+    /**
+     * 3. L'état de la position quand il est tranché, le moment de la partie
+     *    sinon.
+     *
+     * Répéter « vous êtes gagnant » à chaque coup d'une partie équilibrée
+     * serait du remplissage, et ne rien dire du tout réduisait le commentaire à
+     * la réaction et au coup. Une partie égale est précisément le moment
+     * d'enseigner : on développe, on manœuvre ou on pousse un pion passé, et ce
+     * ne sont pas les mêmes gestes.
+     */
     const situation = situationDe(ctx.cpApres);
     if (situation === 'perdu' || situation === 'gagnant') {
       const etat = ETAT_COURT[prof.id]?.[situation];
       if (etat) morceaux.push(piocherNeuf(etat, graine, memoire));
+    } else if (ctx.phase) {
+      const remarque = PHASES[prof.id]?.[ctx.phase];
+      if (remarque) morceaux.push(piocherNeuf(remarque, graine, memoire));
     }
 
-    // Filet de sécurité : aucune coordonnée ne doit survivre jusqu'à la voix.
+    // Filet de sécurité : aucune coordonnée ne doit survivre dans la réplique.
     return sansCoordonnees(morceaux.filter(Boolean).join(' '));
   },
 };
@@ -548,8 +517,8 @@ export const commentaireLocal: MoteurCommentaire = {
 /**
  * État de la position, en une phrase brève.
  *
- * L'ancien registre expliquait comment se défendre en deux propositions. Dit
- * à voix haute après chaque coup, c'était trop long ; la consigne détaillée
+ * L'ancien registre expliquait comment se défendre en deux propositions.
+ * Affiché après chaque coup, c'était trop long ; la consigne détaillée
  * appartient au bilan de fin de partie.
  */
 const ETAT_COURT: Record<string, Partial<Record<Situation, string[]>>> = {
@@ -681,40 +650,13 @@ export function issueDe(resultat: string, monCamp: 'w' | 'b', raison: string): I
   return 'nulle';
 }
 
-/**
- * Tous les registres de phrases, réunis pour la pré-génération vocale.
- *
- * Ces tables sont privées au module : le générateur de voix ne les voyait
- * donc pas, et seules les cent quatre-vingt-une phrases du répertoire étaient
- * pré-générées. Or l'essentiel de ce qu'un professeur dit en cours de partie
- * vient d'ici. Une seule exportation agrégée suffit, plutôt que d'ouvrir
- * chaque table et d'élargir l'interface du module.
- */
-export const REGISTRES_FIGES = {
-  ETAT_COURT,
-};
-
 /* ==========================================================================
    RÉPLIQUES BRÈVES
    ========================================================================== */
 
-/**
- * Ce que dit le professeur quand on joue pendant qu'il parle.
- *
- * Il s'interrompait et restait muet deux ou trois coups, ce qui donnait
- * l'impression qu'il avait décroché. Il reconnaît maintenant le coup, en
- * trois mots, avant d'enchaîner sur son commentaire.
- */
-export function repliqueInterrompu(prof: FicheProfesseur, memoire?: MemoirePhrases): string {
-  return piocherNeuf(INTERROMPU[prof.id] ?? [], `${prof.id}|coupe|${Date.now()}`, memoire);
-}
 
 /** Réponse au choix de reprendre le coup. */
 export function repliqueReprise(prof: FicheProfesseur, memoire?: MemoirePhrases): string {
   return piocherNeuf(REPRISE_ACCORDEE[prof.id] ?? [], `${prof.id}|reprise|${Date.now()}`, memoire);
 }
 
-/** Réponse au choix de garder le coup. */
-export function repliqueGarder(prof: FicheProfesseur, memoire?: MemoirePhrases): string {
-  return piocherNeuf(COUP_GARDE[prof.id] ?? [], `${prof.id}|garder|${Date.now()}`, memoire);
-}

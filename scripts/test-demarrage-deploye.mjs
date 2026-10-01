@@ -169,100 +169,35 @@ if (plateau) {
   verifier(moteurRepond, 'Le moteur démarre et la partie avance');
 }
 
-// --- Les voix sont-elles servies et jouables ? ----------------------------
-// Le manifeste est empaqueté dans le bundle : on vérifie plutôt qu'un
-// fichier pré-généré répond, et qu'il est bien du MP3.
-const echantillon = await page.evaluate(async () => {
-  const r = await fetch('/voix/apercu/fr-FR-HenriNeural.mp3');
-  const octets = new Uint8Array(await r.arrayBuffer());
-  return {
-    code: r.status,
-    type: r.headers.get('content-type'),
-    // fff3 / fff2 / ID3 : signatures d'un MP3 valide.
-    signature: [...octets.slice(0, 3)].map((o) => o.toString(16).padStart(2, '0')).join(''),
-    taille: octets.length,
-  };
-});
-verifier(
-  echantillon.code === 200 && /audio\/mpeg/.test(echantillon.type ?? ''),
-  'Les fichiers de voix sont servis en audio/mpeg',
-  `${echantillon.code} · ${echantillon.type} · ${echantillon.taille} o`,
-);
-verifier(
-  /^(fff|id3)/i.test(echantillon.signature),
-  'Le fichier servi est bien du MP3',
-  echantillon.signature,
-);
-
-// Le manifeste, lui, est chargé à la demande par l'application : c'est par lui
-// que passe TOUTE la parole des professeurs. S'il manque, ou si les fichiers
-// qu'il annonce ne sont pas déployés, chaque phrase repart en synthèse à la
-// demande et le professeur se taît au bout de deux secondes et demie.
-const manifeste = await page.evaluate(async () => {
-  const r = await fetch('/voix/manifeste.json');
-  if (!r.ok) return { code: r.status };
-  const table = await r.json();
-  const chemins = Object.values(table);
-  // Trois au hasard : vérifier les 2 500 prendrait la journée, en vérifier un
-  // seul ne dirait rien d'un déploiement partiel.
-  const tirage = [0, Math.floor(chemins.length / 2), chemins.length - 1].map((i) => chemins[i]);
-  const servis = [];
-  for (const chemin of tirage) {
-    const f = await fetch(chemin);
-    const octets = new Uint8Array(await f.arrayBuffer());
-    servis.push({
-      chemin,
-      code: f.status,
-      signature: [...octets.slice(0, 3)].map((o) => o.toString(16).padStart(2, '0')).join(''),
-    });
+// --- La voix a-t-elle vraiment disparu ? ----------------------------------
+// Supprimer, ce n'est pas désactiver : rien ne doit plus répondre. On le
+// vérifie sur la réponse réelle, parce qu'un fichier oublié dans `public/` ou
+// une fonction restée déployée continueraient d'être servis alors que plus
+// aucune ligne de l'application ne les appelle.
+const residus = await page.evaluate(async () => {
+  const sortie = {};
+  for (const chemin of ['/voix/manifeste.json', '/voix/apercu/fr-FR-HenriNeural.mp3']) {
+    const r = await fetch(chemin).catch(() => null);
+    sortie[chemin] = r ? r.status : 0;
   }
-  return { code: r.status, entrees: chemins.length, servis };
+  const api = await fetch('/api/voix', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ voix: 'fr-FR-HenriNeural', texte: 'Essai.' }),
+  }).catch(() => null);
+  sortie['/api/voix'] = api ? api.status : 0;
+  return sortie;
 });
 verifier(
-  manifeste.code === 200 && (manifeste.entrees ?? 0) > 2000,
-  'Le manifeste des voix est servi et complet',
-  `${manifeste.code} · ${manifeste.entrees ?? 0} entrées`,
+  Object.values(residus).every((code) => code !== 200),
+  'Plus rien ne répond sur les adresses de la voix',
+  Object.entries(residus).map(([c, n]) => `${c} → ${n}`).join(' · '),
 );
-verifier(
-  (manifeste.servis ?? []).every((f) => f.code === 200 && /^(fff|id3)/i.test(f.signature)),
-  'Les phrases annoncées par le manifeste sont réellement déployées',
-  (manifeste.servis ?? []).map((f) => `${f.code} ${f.signature}`).join(' · ') || 'aucun',
-);
-
-// La politique doit autoriser la lecture de ces fichiers et des blobs du
-// cache local : `media-src` est le seul point de blocage possible.
-verifier(
-  /media-src[^;]*'self'/.test(csp) && /media-src[^;]*blob:/.test(csp),
-  'La politique autorise la lecture audio, fichiers et blobs',
-);
-
-// --- La synthèse à la demande répond-elle ? -------------------------------
-const synthese = await page.evaluate(async () => {
-  try {
-    const r = await fetch('/api/voix', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        voix: 'fr-FR-HenriNeural',
-        texte: 'Le moment décisif est 17… Cf6, qui coûte 4,2 pions.',
-      }),
-    });
-    const octets = new Uint8Array(await r.arrayBuffer());
-    return {
-      code: r.status,
-      type: r.headers.get('content-type'),
-      taille: octets.length,
-      signature: [...octets.slice(0, 3)].map((o) => o.toString(16).padStart(2, '0')).join(''),
-    };
-  } catch (e) {
-    return { code: 0, erreur: String(e).slice(0, 120) };
-  }
-});
-verifier(
-  synthese.code === 200 && /audio\/mpeg/.test(synthese.type ?? '') && synthese.taille > 1000,
-  'La synthèse à la demande répond en audio',
-  `${synthese.code} · ${synthese.type ?? synthese.erreur} · ${synthese.taille ?? 0} o`,
-);
+// La politique n'a plus à autoriser de média : aucun son, aucune vidéo.
+verifier(!/media-src/.test(csp), 'La politique ne déclare plus de source média');
+// Et la page de jeu ne doit créer aucun lecteur.
+const lecteurs = await page.evaluate(() => document.querySelectorAll('audio, video').length);
+verifier(lecteurs === 0, 'Aucun lecteur audio dans la page', `${lecteurs} lecteur(s)`);
 
 verifier(erreurs.length === 0, 'Aucune erreur de console', erreurs.slice(0, 2).join(' | ') || 'aucune');
 

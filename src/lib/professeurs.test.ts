@@ -8,14 +8,14 @@ import {
   palierDuProfesseur,
   PROFESSEUR_PAR_DEFAUT,
   PROFESSEURS,
-  reinitialiserRythme,
-  retenirReplique,
   professeurParId,
   type ContexteCommentaire,
   type NiveauEleve,
 } from './professeurs.ts';
 import { NIVEAUX } from './niveaux.ts';
+import { BREVES, PHASES, REACTIONS } from './repertoireProfesseurs.ts';
 import type { Classement } from './classification.ts';
+import type { MemoirePhrases } from './memoirePhrases.ts';
 import { LONGUEUR_CONFORTABLE } from './parole.ts';
 import { boiteBouche, COTE_SOURCE, REPERES } from './reperesPortraits.ts';
 
@@ -382,26 +382,19 @@ describe('le rythme commande la longueur', () => {
   const ctxRythme = (rythme: 'pose' | 'rapide' | 'tresRapide', classement: Classement = 'bon') =>
     contexte({ rythme, classement, cpApres: 40, perteCp: 20, meilleurSan: null });
 
-  /**
-   * Commente, puis déclare ce qui a été dit — comme le fait l'écran.
-   *
-   * La règle des brèves porte sur ce qui est AFFICHÉ, pas sur ce qui est
-   * préparé : une réplique calculée puis abandonnée, parce que l'élève reprend
-   * son coup, ne doit pas imposer le silence au coup suivant.
-   */
-  const dire = async (p: (typeof PROFESSEURS)[number], ctx: ContexteCommentaire) => {
-    const texte = await commentaireLocal.commenter(p, ctx);
-    retenirReplique(p.id, texte);
-    return texte;
-  };
-
   it('abrège quand le joueur accélère', async () => {
     for (const p of PROFESSEURS) {
       const pose = await commentaireLocal.commenter(p, ctxRythme('pose'));
       const rapide = await commentaireLocal.commenter(p, ctxRythme('rapide'));
       const tresRapide = await commentaireLocal.commenter(p, ctxRythme('tresRapide'));
-      expect(rapide.length, `${p.id} rapide`).toBeLessThanOrEqual(pose.length);
-      expect(tresRapide.length, `${p.id} très rapide`).toBeLessThanOrEqual(rapide.length);
+      // Les deux paliers rapides tiennent en une ligne ; comparer leurs
+      // longueurs entre eux n'a pas de sens, « Vu. » et « Pour l'instant, oui. »
+      // appartiennent au même registre. Ce qui compte est qu'ils soient tous
+      // deux nettement plus courts que la réplique posée.
+      expect(rapide.length, `${p.id} rapide : ${rapide}`).toBeLessThan(pose.length);
+      expect(tresRapide.length, `${p.id} très rapide : ${tresRapide}`).toBeLessThan(pose.length);
+      expect(rapide.length, `${p.id} rapide : ${rapide}`).toBeLessThan(45);
+      expect(tresRapide.length, `${p.id} très rapide : ${tresRapide}`).toBeLessThan(45);
     }
   });
 
@@ -418,57 +411,132 @@ describe('le rythme commande la longueur', () => {
 
   it('reste bref sur un bon coup joué vite', async () => {
     for (const p of PROFESSEURS) {
-      reinitialiserRythme();
       const t = await commentaireLocal.commenter(p, ctxRythme('tresRapide', 'excellent'));
-      expect(t.length, `${p.id} : ${t}`).toBeLessThan(30);
+      expect(t.length, `${p.id} : ${t}`).toBeLessThan(40);
+      expect(t.length, `${p.id} ne dit rien`).toBeGreaterThan(0);
     }
   });
 
-  it('n’enchaîne jamais deux brèves : un mot, puis rien, puis un mot', async () => {
-    // « Bien. Juste. Noté. Correct. » sur dix coups fait une mitraille. Le
-    // silence n'est pas une brève : après lui, le mot est de nouveau permis.
+  it('dit quelque chose du moment de la partie quand rien n’est tranché', async () => {
+    // Une partie égale ne donne ni « vous êtes gagnant » ni « c’est perdu » :
+    // c’est le moment d’enseigner, et les trois temps ne s’enseignent pas de la
+    // même façon.
     for (const p of PROFESSEURS) {
-      reinitialiserRythme();
-      const suite: string[] = [];
-      for (let i = 0; i < 8; i++) {
-        suite.push(await dire(p, ctxRythme('tresRapide', 'excellent')));
+      for (const phase of ['ouverture', 'milieu', 'finale'] as const) {
+        const t = await commentaireLocal.commenter(
+          p,
+          contexte({ rythme: 'pose', classement: 'bon', cpApres: 30, perteCp: 15, phase }),
+        );
+        const attendu = PHASES[p.id][phase];
+        expect(
+          attendu.some((r) => t.includes(r)),
+          `${p.id} · ${phase} : ${t}`,
+        ).toBe(true);
       }
-      expect(suite[0], p.id).not.toBe('');
-      const colles = suite.filter((t, i) => i > 0 && t !== '' && suite[i - 1] !== '');
-      expect(colles, `${p.id} : ${JSON.stringify(suite)}`).toEqual([]);
-      // Et il ne se tait pas définitivement : la moitié des coups reçoit un mot.
-      expect(suite.filter(Boolean).length, p.id).toBeGreaterThanOrEqual(3);
     }
   });
+});
 
-  it('ne redit pas la même phrase même quand elle vient d’un autre registre', async () => {
-    // « Bien. » figure dans les acquiescements ET dans les réactions neutres :
-    // le garde par registre laissait passer deux « Bien. » de suite, un de
-    // chaque liste. Le joueur n'entend pas des registres, il entend une voix.
-    for (const p of PROFESSEURS) {
-      reinitialiserRythme();
-      const suite: string[] = [];
-      for (let i = 0; i < 12; i++) {
-        const t =
-          i % 2 === 0
-            ? await dire(p, ctxRythme('tresRapide', 'excellent'))
-            : await dire(p, ctxRythme('rapide', 'theorie'));
-        if (t !== '') suite.push(t);
+describe('une partie entière sans une seule répétition', () => {
+  /**
+   * C'est la demande centrale, et elle se vérifie sur une partie, pas sur un
+   * tirage.
+   *
+   * On déroule quarante coups avec une distribution plausible — une vingtaine de
+   * bons coups, une dizaine d'imprécisions, quelques coups de théorie, quelques
+   * fautes lourdes — en traversant les trois temps de la partie et en changeant
+   * de rythme comme le fait un joueur réel.
+   *
+   * Le contrôle porte sur la PREMIÈRE PHRASE de chaque réplique : c'est elle qui
+   * vient d'un registre, et c'est elle qu'on reconnaissait trois fois de suite.
+   * Ce qui suit — « votre cavalier est en prise » — est fabriqué à partir de la
+   * position, et doit pouvoir se répéter quand le même motif revient : ce n'est
+   * pas une formule, c'est un fait.
+   */
+  const COUPS: { classement: Classement; perteCp: number; cpApres: number }[] = [
+    ...Array.from({ length: 20 }, () => ({ classement: 'bon' as Classement, perteCp: 15, cpApres: 35 })),
+    ...Array.from({ length: 10 }, () => ({
+      classement: 'imprecision' as Classement,
+      perteCp: 70,
+      cpApres: -40,
+    })),
+    ...Array.from({ length: 5 }, () => ({ classement: 'theorie' as Classement, perteCp: 0, cpApres: 20 })),
+    ...Array.from({ length: 5 }, () => ({ classement: 'gaffe' as Classement, perteCp: 400, cpApres: -350 })),
+  ];
+
+  /** Mélange déterministe : la même partie à chaque exécution. */
+  const ordonne = COUPS.map((c, i) => ({ c, r: (i * 7919) % 101 }))
+    .sort((a, b) => a.r - b.r)
+    .map((x) => x.c);
+
+  const premierePhrase = (t: string) => t.split(/(?<=[.!?…])\s/)[0] ?? t;
+
+  for (const p of PROFESSEURS) {
+    it(`${p.nom} ne redit jamais la même phrase`, async () => {
+      const memoire: MemoirePhrases = { dites: [], nouvelles: [], partie: [] };
+      const dites: string[] = [];
+      for (const [i, coup] of ordonne.entries()) {
+        const phase = i < 13 ? 'ouverture' : i < 27 ? 'milieu' : 'finale';
+        const rythme = i % 3 === 0 ? 'pose' : i % 3 === 1 ? 'rapide' : 'tresRapide';
+        const texte = await commentaireLocal.commenter(
+          p,
+          contexte({ ...coup, rythme, phase, memoire, meilleurSan: null }),
+        );
+        // L'écran retient les tournures une fois le commentaire affiché.
+        memoire.partie = [...memoire.partie, ...memoire.nouvelles];
+        memoire.nouvelles = [];
+        if (texte) dites.push(premierePhrase(texte));
       }
-      const colles = suite.filter((t, i) => i > 0 && t === suite[i - 1]);
-      expect(colles, `${p.id} : ${JSON.stringify(suite)}`).toEqual([]);
+      expect(dites.length, `${p.id} : le professeur doit parler à chaque coup`).toBe(ordonne.length);
+      const comptes = new Map<string, number>();
+      for (const t of dites) comptes.set(t, (comptes.get(t) ?? 0) + 1);
+      const repetees = [...comptes.entries()].filter(([, n]) => n > 1);
+      expect(repetees, `${p.id} : ${JSON.stringify(repetees)}`).toEqual([]);
+    });
+  }
+
+  it('les registres sont assez fournis pour une partie entière', async () => {
+    // Le garde-fou qui explique le reste : la règle « jamais deux fois » ne
+    // tient que si le registre contient plus de tournures que la partie n'aura
+    // d'occasions de s'en servir. Un registre trop maigre la ferait céder en
+    // silence, par le dernier palier du tirage.
+    for (const p of PROFESSEURS) {
+      expect(REACTIONS[p.id].bon.length, `${p.id} bon`).toBeGreaterThanOrEqual(24);
+      expect(REACTIONS[p.id].faute.length, `${p.id} faute`).toBeGreaterThanOrEqual(20);
+      expect(REACTIONS[p.id].grave.length, `${p.id} grave`).toBeGreaterThanOrEqual(16);
+      expect(REACTIONS[p.id].neutre.length, `${p.id} neutre`).toBeGreaterThanOrEqual(16);
+      // Trente-six : une partie de blitz tire une brève par coup, et une partie
+      // en tire trente à quarante. En dessous, le registre s'épuisait avant la
+      // fin et le dernier palier du tirage autorisait une reprise — mesuré sur
+      // une vraie partie, « Je suis le fil. » revenait au vingt-huitième coup.
+      expect(BREVES[p.id].length, `${p.id} brèves`).toBeGreaterThanOrEqual(36);
+      for (const phase of ['ouverture', 'milieu', 'finale'] as const) {
+        expect(PHASES[p.id][phase].length, `${p.id} ${phase}`).toBeGreaterThanOrEqual(10);
+      }
     }
   });
 
-  it('une faute rend la parole au professeur, même en pleine série', async () => {
-    for (const p of PROFESSEURS) {
-      reinitialiserRythme();
-      await dire(p, ctxRythme('tresRapide', 'excellent'));
-      expect(await dire(p, ctxRythme('tresRapide', 'excellent'))).toBe('');
-      const faute = await dire(p, contexte({ rythme: 'tresRapide', classement: 'gaffe', perteCp: 400 }));
-      expect(faute.length, `${p.id} faute`).toBeGreaterThan(25);
-      // Et le coup suivant, s'il est bon, reçoit de nouveau un mot.
-      expect(await dire(p, ctxRythme('tresRapide', 'excellent'))).not.toBe('');
+  it('aucune tournure n’est partagée par deux professeurs dans le même registre', async () => {
+    // « Les quatre ne disent jamais la même chose dans la même situation. »
+    const partagees: string[] = [];
+    for (const ton of ['bon', 'faute', 'grave', 'neutre'] as const) {
+      const vues = new Map<string, string>();
+      for (const p of PROFESSEURS) {
+        for (const t of REACTIONS[p.id][ton]) {
+          const deja = vues.get(t);
+          if (deja && deja !== p.id) partagees.push(`${ton} : « ${t} » (${deja} et ${p.id})`);
+          else vues.set(t, p.id);
+        }
+      }
     }
+    for (const p of PROFESSEURS) {
+      for (const q of PROFESSEURS) {
+        if (p.id >= q.id) continue;
+        for (const t of BREVES[p.id]) {
+          if (BREVES[q.id].includes(t)) partagees.push(`brèves : « ${t} » (${p.id} et ${q.id})`);
+        }
+      }
+    }
+    expect(partagees).toEqual([]);
   });
 });

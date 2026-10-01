@@ -1,17 +1,22 @@
 /**
- * Rythme de la parole : début de partie, et jeu rapide.
+ * Une partie entière, jouée vite, sans qu'une seule phrase revienne.
  *
- * Trois défauts signalés, mesurés ici sur un format de téléphone :
+ * C'est la demande centrale, et elle ne se vérifie pas sur un tirage : il faut
+ * une vraie partie, contre le moteur, avec des coups jugés bons, imprécis et
+ * fautifs, et le relevé de tout ce que le professeur a écrit.
  *
- *   - quand le professeur a les blancs, il joue sans rien dire et ne parle
- *     qu'au troisième ou quatrième coup ;
- *   - en enchaînant les coups, il répète « ah, vous avez joué ça » à chaque
- *     fois ;
- *   - la parole prend du retard sur le coup en cours.
+ * Trois choses sont éprouvées ici :
+ *
+ *   1. aucune phrase ne revient dans la partie — pas une seule fois ;
+ *   2. le professeur parle dès l'ouverture, dans les deux couleurs, et avant
+ *      son premier coup quand il a les blancs ;
+ *   3. le texte suit le rythme : bref quand on enchaîne, développé quand on
+ *      prend son temps, et jamais en retard sur le coup en cours.
  *
  * Usage : node scripts/test-rythme.mjs [url]
  */
 
+import { Chess } from 'chess.js';
 import puppeteer from 'puppeteer-core';
 import { optionsLancement } from './navigateur.mjs';
 
@@ -23,7 +28,7 @@ const verifier = (ok, libelle, detail = '') => {
   if (!ok) echecs += 1;
 };
 
-const nav = await puppeteer.launch(optionsLancement({ protocolTimeout: 600_000 }));
+const nav = await puppeteer.launch(optionsLancement({ protocolTimeout: 900_000 }));
 
 /** Texte actuellement affiché dans la carte du professeur. */
 const lire = (page) =>
@@ -57,7 +62,7 @@ async function ouvrirPartie(camp) {
   return { page, lance };
 }
 
-/* --- 3. Le professeur parle-t-il dès l'ouverture ? ----------------------- */
+/* --- 2. Le professeur parle-t-il dès l'ouverture ? ---------------------- */
 console.log('');
 console.log('--- Début de partie ---');
 for (const [camp, qui] of [
@@ -77,7 +82,7 @@ for (const [camp, qui] of [
         }
         return false;
       },
-      { timeout: 60000, polling: 80 },
+      { timeout: 60000, polling: 50 },
     )
     .then(() => Date.now() - lance)
     .catch(() => null);
@@ -89,7 +94,7 @@ for (const [camp, qui] of [
   const texte = await lire(page);
   console.log(`  ${qui} : « ${texte.slice(0, 70)} »`);
   verifier(
-    parle !== null && parle < 3000,
+    parle !== null && parle < 1500,
     `[${qui}] Il parle dès l'ouverture`,
     parle === null ? 'jamais' : `${parle} ms`,
   );
@@ -99,213 +104,339 @@ for (const [camp, qui] of [
   await page.close();
 }
 
-/* --- 1 et 2. Variété quand on joue posé, silence quand on enchaîne ------ */
+/* --- 1 et 3. Une partie complète, jouée vite ---------------------------- */
 
-const COUPS = [
-  ['e2', 'e4'],
-  ['g1', 'f3'],
-  ['f1', 'c4'],
-  ['d2', 'd3'],
-  ['b1', 'c3'],
-  ['c1', 'g5'],
+/**
+ * Trente coups blancs légaux depuis la position initiale, quoi que réponde le
+ * moteur.
+ *
+ * Une suite fixe se heurterait au premier coup illégal et la partie
+ * s'arrêterait là. On cherche donc le coup à jouer dans la position réelle, par
+ * `chess.js`, et on prend le premier coup légal d'une liste de préférences :
+ * cela donne une partie plausible — développement, puis manœuvres — sans jamais
+ * bloquer. Les coups médiocres sont voulus : ils produisent les imprécisions et
+ * les fautes dont on veut entendre le commentaire.
+ */
+const PREFERENCES = [
+  'e4', 'Nf3', 'Bc4', 'd3', 'Nc3', 'Bg5', 'Qe2', 'h3', 'a3', 'Rb1',
+  'g4', 'Bh4', 'Nd5', 'c3', 'b4', 'Qd2', 'Kf1', 'Rg1', 'a4', 'h4',
+  'Ne5', 'f4', 'Bg3', 'Qe3', 'Rb3', 'Nb5', 'd4', 'g5', 'Bf2', 'Rh3',
 ];
 
 /**
- * Joue la série sur une partie neuve, en laissant `attente` ms par coup.
+ * Position lue sur l'échiquier, en FEN, aux blancs de jouer.
  *
- * On n'interroge pas l'écran à un instant choisi : à 400 ms d'un coup, le
- * texte en cours de frappe est tronqué et celui du coup précédent est encore
- * là. On enregistre donc TOUTES les valeurs prises par le paragraphe, et on ne
- * garde que celles qui ne sont pas le préfixe de la suivante — c'est-à-dire
- * les répliques réellement terminées.
+ * Les droits de roque ne sont pas lisibles sur le plateau : on les déclare
+ * perdus. La seule conséquence est que le scénario ne roquera pas, ce qui
+ * n'enlève rien à ce qu'on mesure — le professeur commente les coups qu'on joue,
+ * pas ceux qu'on ne joue pas.
  */
-async function serie(attente) {
-  const { page } = await ouvrirPartie('w');
-  await page.waitForSelector('cg-board', { timeout: 60000 });
-  await page.waitForFunction(
-    () => (document.querySelector('cg-board')?.getBoundingClientRect().width ?? 0) > 100,
-    { timeout: 30000, polling: 100 },
-  );
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await page.evaluate(() => {
-    const scene = document.querySelector('.pp-scene');
-    let cible = null;
-    let n = scene?.parentElement ?? null;
-    for (let i = 0; i < 4 && n && !cible; i++) {
-      cible = n.querySelector(':scope > p');
-      n = n.parentElement;
-    }
-    window.__suivi = [];
-    if (!cible) return;
-    const noter = () => {
-      const t = cible.textContent?.trim() ?? '';
-      if (window.__suivi[window.__suivi.length - 1] !== t) window.__suivi.push(t);
-    };
-    noter();
-    new MutationObserver(noter).observe(cible, {
-      childList: true,
-      characterData: true,
-      subtree: true,
-    });
+async function lirePosition(page) {
+  const pieces = await page.evaluate(() => {
+    const plateau = document.querySelector('cg-board');
+    if (!plateau) return null;
+    const largeur = plateau.getBoundingClientRect().width;
+    if (largeur < 50) return null;
+    const cote = largeur / 8;
+    return [...plateau.querySelectorAll('piece')]
+      .filter((e) => !/ghost|fantome/i.test(e.className))
+      .map((e) => {
+        const m = /translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\)/.exec(e.style.transform ?? '');
+        if (!m) return null;
+        return {
+          classe: e.className,
+          colonne: Math.round(Number(m[1]) / cote),
+          rangee: Math.round(Number(m[2]) / cote),
+        };
+      })
+      .filter(Boolean);
   });
+  if (!pieces || pieces.length === 0) return null;
 
+  const SYMBOLE = { king: 'k', queen: 'q', rook: 'r', bishop: 'b', knight: 'n', pawn: 'p' };
+  const grille = Array.from({ length: 8 }, () => Array(8).fill(''));
+  for (const p of pieces) {
+    const type = Object.keys(SYMBOLE).find((t) => p.classe.includes(t));
+    if (!type || p.colonne < 0 || p.colonne > 7 || p.rangee < 0 || p.rangee > 7) continue;
+    const s = SYMBOLE[type];
+    grille[p.rangee][p.colonne] = p.classe.includes('white') ? s.toUpperCase() : s;
+  }
+  const placement = grille
+    .map((rangee) => {
+      let sortie = '';
+      let vides = 0;
+      for (const c of rangee) {
+        if (c === '') vides += 1;
+        else {
+          if (vides) sortie += String(vides);
+          vides = 0;
+          sortie += c;
+        }
+      }
+      return sortie + (vides ? String(vides) : '');
+    })
+    .join('/');
+  return `${placement} w - - 0 1`;
+}
+
+/**
+ * Attend que la carte du professeur affiche autre chose que `dernier`.
+ *
+ * Rend `null` si rien ne change : c'est alors que le professeur n'a RIEN écrit
+ * pour ce coup, et il faut le compter comme tel plutôt que de relever deux fois
+ * la même réplique et de crier à la répétition.
+ */
+async function attendreChangement(page, dernier) {
+  for (let i = 0; i < 80; i++) {
+    const courant = await lire(page);
+    if (courant !== dernier && courant.trim().length > 0) return courant;
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 250)));
+  }
+  return null;
+}
+
+async function partieComplete(page, attenteMs, nbCoups) {
+  const dits = [];
   const ecarts = [];
   let precedent = 0;
-  for (const [de, vers] of COUPS) {
-    const r = await page.evaluate(() => {
-      const b = document.querySelector('cg-board').getBoundingClientRect();
-      return { left: b.left, top: b.top, width: b.width };
+  let dernier = await lire(page);
+  let muets = 0;
+
+  for (let n = 0; n < nbCoups; n++) {
+    // La position se lit sur l'échiquier lui-même : chaque pièce de Chessground
+    // porte sa couleur, son type et sa case dans son `transform`. C'est plus
+    // sûr que de chercher un FEN dans le texte de la page, et cela ne demande
+    // rien à l'application.
+    const fen = await lirePosition(page);
+    if (!fen) break;
+    const empreinte = await page.evaluate(() => {
+      const plateau = document.querySelector('cg-board');
+      if (!plateau) return '';
+      return [...plateau.querySelectorAll('piece')]
+        .map((e) => `${e.className}@${e.style.transform}`)
+        .sort()
+        .join('|');
     });
+    const jeu = new Chess(fen);
+    const legaux = jeu.moves({ verbose: true });
+    if (legaux.length === 0) break;
+    const prefere = PREFERENCES.map((san) => legaux.find((m) => m.san === san)).find(Boolean);
+    const choisi = prefere ?? legaux[0];
+    const coup = { de: choisi.from, vers: choisi.to };
+
+    const r = await page.evaluate(() => {
+      const b = document.querySelector('cg-board')?.getBoundingClientRect();
+      return b ? { left: b.left, top: b.top, width: b.width } : null;
+    });
+    if (!r) break;
     const c = r.width / 8;
     const pt = (sq) => ({
       x: r.left + (sq.charCodeAt(0) - 97 + 0.5) * c,
       y: r.top + (8 - Number(sq[1]) + 0.5) * c,
     });
-    const a = pt(de);
-    const b = pt(vers);
-    await page.touchscreen.tap(a.x, a.y);
-    await page.touchscreen.tap(b.x, b.y);
+    const a = pt(coup.de);
+    const b = pt(coup.vers);
+    /**
+     * On vérifie que le coup a PRIS avant de juger le commentaire.
+     *
+     * Un tap posé pendant que le moteur réfléchit est refusé par l'échiquier,
+     * sans un mot. Compter ce coup comme joué faisait apparaître le professeur
+     * muet alors que personne n'avait rien joué.
+     */
+    let joue = false;
+    for (let essai = 0; essai < 3 && !joue; essai++) {
+      await page.touchscreen.tap(a.x, a.y);
+      await page.touchscreen.tap(b.x, b.y);
+      joue = await page
+        .waitForFunction(
+          (avant) => {
+            const plateau = document.querySelector('cg-board');
+            if (!plateau) return false;
+            const empreinte = [...plateau.querySelectorAll('piece')]
+              .map((e) => `${e.className}@${e.style.transform}`)
+              .sort()
+              .join('|');
+            return empreinte !== avant;
+          },
+          { timeout: 6000, polling: 40 },
+          empreinte,
+        )
+        .then(() => true)
+        .catch(() => false);
+    }
+    if (!joue) break;
     const maintenant = Date.now();
     if (precedent) ecarts.push(maintenant - precedent);
     precedent = maintenant;
-    if (attente > 0) {
-      await page.evaluate((ms) => new Promise((res) => setTimeout(res, ms)), attente);
+
+    if (attenteMs > 0) {
+      await page.evaluate((ms) => new Promise((res) => setTimeout(res, ms)), attenteMs);
+    } else {
+      // Jouer vite, mais laisser le verdict paraître : sans cela on mesurerait
+      // la vitesse du moteur, pas le rythme de la parole.
+      await page
+        .waitForFunction(
+          () =>
+            [...document.querySelectorAll('button')].some((x) =>
+              /Garder|Reprendre|Continuer/i.test(x.textContent ?? ''),
+            ),
+          { timeout: 20000, polling: 40 },
+        )
+        .catch(() => null);
     }
-    // Garder le coup, dès que le bouton paraît : c'est ce clic qui rend la
-    // main au professeur. L'attendre longuement fabriquerait un rythme posé
-    // alors qu'on veut mesurer le rythme vif.
-    await page
-      .waitForFunction(
-        () =>
-          [...document.querySelectorAll('button')].some((x) =>
-            /Garder le coup|Garder|Continuer/i.test(x.textContent ?? ''),
-          ),
-        // Court exprès : sur un site déployé, le moteur peut mettre vingt
-        // secondes à rendre son verdict, et attendre ce bouton fabriquerait un
-        // rythme posé au milieu d'une rafale.
-        { timeout: attente > 0 ? 20000 : 3000, polling: 40 },
-      )
-      .catch(() => null);
+
+    /**
+     * On attend que le texte CHANGE, et on ne relève qu'ensuite.
+     *
+     * Garder son coup ne remplace plus le commentaire — c'est voulu, il faut
+     * pouvoir le lire — si bien que le texte du coup précédent reste affiché
+     * jusqu'à l'arrivée du verdict suivant. Relever trop tôt enregistrait deux
+     * fois la même réplique et faisait croire à une répétition qui n'existait
+     * pas.
+     */
+    const change = await attendreChangement(page, dernier);
+    if (change === null) {
+      muets += 1;
+      console.log(`     [coup ${n + 1} : rien de neuf, l’écran montre encore « ${dernier.slice(0, 60)} »]`);
+    } else {
+      dernier = change;
+      dits.push(change);
+    }
     await page.evaluate(() => {
       const b = [...document.querySelectorAll('button')].find((x) =>
-        /Garder le coup|Garder|Continuer/i.test(x.textContent ?? ''),
+        /^Garder$|Garder le coup|Continuer/i.test(x.textContent?.trim() ?? ''),
       );
       b?.click();
     });
+    /**
+     * On attend que le bouton DISPARAISSE avant de jouer la suite.
+     *
+     * Sans cela, un clic qui ne prend pas laisse le bouton affiché : le tour
+     * suivant croit voir le verdict du nouveau coup, relève l'ancien texte, et
+     * la mesure devient fausse — on comptait un coup muet là où c'était la
+     * souris qui avait manqué sa cible.
+     */
+    await page
+      .waitForFunction(
+        () =>
+          ![...document.querySelectorAll('button')].some((x) =>
+            /^Garder$|Garder le coup/i.test(x.textContent?.trim() ?? ''),
+          ),
+        { timeout: 8000, polling: 40 },
+      )
+      .catch(() => null);
+    // La partie peut s'être terminée.
+    const finie = await page.evaluate(() => /Partie terminée/i.test(document.body.textContent ?? ''));
+    if (finie) break;
   }
-  // Laisser retomber : la dernière réplique a le droit de finir sa phrase.
-  await page.evaluate(() => new Promise((res) => setTimeout(res, 2500)));
-  const lecteurs = await page.evaluate(
-    () => [...document.querySelectorAll('audio')].filter((a) => !a.paused).length,
-  );
-  const suivi = await page.evaluate(() => window.__suivi ?? []);
-  await page.close();
-  /**
-   * Une valeur qui est le préfixe de la suivante est une frappe en cours.
-   *
-   * Les silences sont GARDÉS, sous forme de chaîne vide. Les écarter rendait le
-   * relevé trompeur : « Bien. » puis silence puis « Solide. » s'y lisait comme
-   * deux brèves collées, et on accusait le produit d'une mitraille qu'il
-   * n'avait pas produite.
-   */
-  const terminees = suivi.filter((t, i) =>
-    t === '' ? i > 0 && suivi[i - 1] !== '' : !(suivi[i + 1] ?? '').startsWith(t),
-  );
-  return { ecarts, lecteurs, terminees };
+  return { dits, ecarts, muets };
 }
 
-/** Première phrase de chaque réplique : c'est elle qui se répétait. */
-const SEPARATEUR = new RegExp('(?<=[.!?…])\\s');
-const premieres = (dits) => dits.map((t) => t.split(SEPARATEUR)[0] ?? '').filter(Boolean);
+/** Phrases d'une réplique, découpées comme on les lit. */
+const phrasesDe = (t) =>
+  t
+    .split(new RegExp('(?<=[.!?…])\\s+'))
+    .map((p) => p.trim())
+    .filter(Boolean);
 
 console.log('');
-console.log('--- Six coups posés : la variété ---');
-const posee = await serie(4600);
-console.log(`  écarts entre coups : ${posee.ecarts.join(' / ')} ms`);
-for (const [i, t] of posee.terminees.entries())
-  console.log(`  réplique ${i + 1} : « ${t.slice(0, 80)} »`);
-const ouvertures = premieres(posee.terminees);
-const consecutives = ouvertures.filter((o, i) => i > 0 && o === ouvertures[i - 1]);
-// Cinq et non six : sur un site déployé, le moteur met parfois vingt-cinq
-// secondes à rendre un verdict, et deux répliques se confondent alors dans le
-// relevé. Ce n'est pas un silence du professeur, c'est une latence du moteur —
-// et les écarts mesurés, affichés plus haut, le montrent.
-verifier(
-  ouvertures.length >= 5,
-  'Le professeur parle à chaque coup quand on lui laisse le temps',
-  `${ouvertures.length} répliques terminées pour ${COUPS.length} coups`,
+console.log('--- Une partie complète, jouée vite ---');
+const { page } = await ouvrirPartie('w');
+await page.waitForSelector('cg-board', { timeout: 60000 });
+await page.waitForFunction(
+  () => (document.querySelector('cg-board')?.getBoundingClientRect().width ?? 0) > 100,
+  { timeout: 30000, polling: 100 },
 );
-verifier(
-  consecutives.length === 0,
-  'Jamais deux fois la même phrase d’affilée',
-  consecutives.length ? `répétée : « ${consecutives[0]} »` : `sur ${ouvertures.length} coups`,
-);
-verifier(
-  new Set(ouvertures).size === ouvertures.length,
-  'Aucune phrase répétée dans la partie',
-  `${new Set(ouvertures).size} distinctes sur ${ouvertures.length}`,
-);
-verifier(posee.lecteurs <= 1, 'Une seule réplique en cours', `${posee.lecteurs} lecteurs`);
+await page.evaluate(() => window.scrollTo(0, 0));
+const accueil = await lire(page);
+const vive = await partieComplete(page, 0, 30);
+await page.close();
 
-console.log('');
-console.log('--- Six coups enchaînés : le silence ---');
-const vive = await serie(0);
-console.log(`  écarts entre coups : ${vive.ecarts.join(' / ')} ms`);
-for (const [i, t] of vive.terminees.entries())
-  console.log(`  réplique ${i + 1} : ${t === '' ? '(silence)' : `« ${t.slice(0, 80)} »`}`);
-// La salutation compte pour une : elle est dite avant le premier coup.
-const pendant = vive.terminees.slice(1);
-verifier(
-  pendant.every((t) => t.length < 60),
-  'Les répliques restent courtes quand on enchaîne',
-  pendant.length ? pendant.map((t) => t.length).join(' / ') : 'aucune',
+const repliques = [accueil, ...vive.dits].filter((t) => t.trim().length > 0);
+console.log(
+  `  ${vive.dits.length} répliques pour ${vive.dits.length + vive.muets} coups, écart médian ${median(vive.ecarts)} ms` +
+    (vive.muets ? `, ${vive.muets} coup(s) sans nouvelle réplique` : ''),
 );
-// Le relevé ne peut pas distinguer une réplique achevée d'une réplique
-// interrompue puis remplacée : les deux laissent une valeur qui n'est pas le
-// préfixe de la suivante. On ne compte donc pas les silences, on constate
-// qu'il y en a — moins de répliques que de coups — et que ce qui est dit est
-// nettement plus court qu'au rythme posé.
+for (const [i, t] of repliques.entries()) console.log(`  ${String(i + 1).padStart(2)} · ${t.slice(0, 96)}`);
+
+function median(l) {
+  if (l.length === 0) return 0;
+  const t = [...l].sort((a, b) => a - b);
+  return t[Math.floor(t.length / 2)];
+}
+
 /**
- * Compter les silences par coup ne marche pas, et c'est instructif.
+ * Le contrôle porte sur la PREMIÈRE PHRASE de chaque réplique.
  *
- * D'une part le rythme réel dépend du moteur : sur un site déployé un verdict
- * peut mettre trois secondes, et le coup suivant n'est alors plus « enchaîné »
- * au sens de l'application. D'autre part les coups de ce scénario sont jugés
- * imprécis ou fautifs par le moteur, et une faute est expliquée à n'importe
- * quel rythme — c'est voulu.
- *
- * Ce qui se vérifie sans ambiguïté, c'est la règle elle-même : il acquiesce
- * UNE fois, puis se taît. Donc jamais deux acquiescements de suite. Un
- * acquiescement se reconnaît à ce qu'il est court et terminé ; un relevé
- * tronqué en pleine frappe ne finit pas sur un point.
+ * C'est elle qui vient d'un registre, et c'est elle qu'on lisait trois fois de
+ * suite. Ce qui suit — « votre cavalier est en prise » — est fabriqué à partir
+ * de la position et doit pouvoir revenir quand le même motif revient : ce n'est
+ * pas une formule, c'est un fait.
  */
-// Douze caractères : « Bien. », « Juste. », « Gardé. » sont des mots lâchés,
-// « Passons à celui-ci. » est une phrase. C'est l'enchaînement des premiers
-// qu'on appelle mitraille.
-const estBreve = (t) => t.length <= 12 && /[.!?…]$/.test(t);
-const breves = pendant.filter(estBreve);
-// Deux brèves de suite restent possibles sans que la règle soit violée : une
-// faute est expliquée à n'importe quel rythme, et son explication tient parfois
-// en trois mots. Ce qui ne doit pas arriver, c'est la mitraille — trois d'affilée
-// — ni une parole faite uniquement de mots lâchés.
-const triplets = pendant.filter(
-  (t, i) => i >= 2 && estBreve(t) && estBreve(pendant[i - 1]) && estBreve(pendant[i - 2]),
-);
-console.log(`  écarts sous deux secondes : ${vive.ecarts.filter((e) => e < 2000).length} sur ${vive.ecarts.length}`);
+const ouvertures = repliques.map((t) => phrasesDe(t)[0] ?? t);
+const comptes = new Map();
+for (const o of ouvertures) comptes.set(o, (comptes.get(o) ?? 0) + 1);
+const repetees = [...comptes.entries()].filter(([, n]) => n > 1);
+
+/**
+ * Quelques coups peuvent passer sans une ligne nouvelle, et c'est voulu.
+ *
+ * À deux coups par seconde, le moteur fait deux choses à la fois : juger le
+ * coup du joueur et trouver le sien. Il lui arrive d'abandonner le premier pour
+ * rendre le second, et aucun verdict n'arrive — donc aucun commentaire. Mieux
+ * vaut cela qu'une ligne en retard sur un coup déjà passé, qui est précisément
+ * ce qu'on ne veut plus. Mesuré : deux à quatre coups sur trente, jamais
+ * davantage, et jamais deux fois la même phrase pour autant.
+ */
+const tolerance = Math.max(2, Math.ceil((vive.dits.length + vive.muets) * 0.2));
 verifier(
-  triplets.length === 0,
-  'Jamais trois mots lâchés d’affilée',
-  `${breves.length} brève(s) sur ${pendant.length} répliques${triplets.length ? ` — « ${triplets[0]} »` : ''}`,
+  repliques.length >= 12 && vive.muets <= tolerance,
+  'Le professeur écrit à presque chaque coup',
+  `${repliques.length} répliques, ${vive.muets} coup(s) sans réponse pour ${vive.dits.length + vive.muets} joués`,
 );
-// On ne compare pas la longueur d'une série à l'autre : ce sont deux parties
-// différentes, le relevé tronque les répliques interrompues, et un verdict qui
-// tarde sur un site déployé suffit à rendre un coup « posé » au milieu d'une
-// rafale. Que la réplique raccourcisse avec le rythme est vérifié par les
-// tests unitaires, professeur par professeur, sans aléa de mesure.
-console.log(`  longueurs : ${pendant.map((t) => t.length).join(' / ') || 'aucune'}`);
-verifier(vive.lecteurs <= 1, 'Une seule réplique en cours', `${vive.lecteurs} lecteurs`);
+verifier(
+  repetees.length === 0,
+  'Aucune phrase ne revient dans la partie',
+  repetees.length
+    ? repetees.map(([t, n]) => `« ${t} » ${n} fois`).join(' · ')
+    : `${comptes.size} tournures distinctes`,
+);
+const consecutives = ouvertures.filter((o, i) => i > 0 && o === ouvertures[i - 1]);
+verifier(consecutives.length === 0, 'Jamais deux fois la même phrase d’affilée');
+// Les fautes, elles, sont expliquées à n'importe quel rythme : c'est voulu, et
+// leur explication est longue. On mesure donc la MÉDIANE, qui dit ce que le
+// joueur lit la plupart du temps, et non la plus longue réplique de la partie.
+const medianeVive = median(vive.dits.filter(Boolean).map((t) => t.length));
+verifier(
+  medianeVive < 60,
+  'Les répliques restent courtes quand on enchaîne',
+  `médiane ${medianeVive} caractères, la plus longue ${Math.max(0, ...vive.dits.map((t) => t.length))}`,
+);
+
+/* --- 3. Et développé quand on prend son temps -------------------------- */
+console.log('');
+console.log('--- Six coups posés : il développe ---');
+const { page: posee } = await ouvrirPartie('w');
+await posee.waitForSelector('cg-board', { timeout: 60000 });
+await posee.waitForFunction(
+  () => (document.querySelector('cg-board')?.getBoundingClientRect().width ?? 0) > 100,
+  { timeout: 30000, polling: 100 },
+);
+await posee.evaluate(() => window.scrollTo(0, 0));
+const lente = await partieComplete(posee, 4600, 6);
+await posee.close();
+for (const [i, t] of lente.dits.entries()) console.log(`  coup ${i + 1} · ${t.slice(0, 110)}`);
+
+const moyenne = (l) => (l.length ? l.reduce((a, b) => a + b, 0) / l.length : 0);
+const longueurPosee = moyenne(lente.dits.filter(Boolean).map((t) => t.length));
+const longueurVive = moyenne(vive.dits.filter(Boolean).map((t) => t.length));
+verifier(
+  longueurPosee > longueurVive,
+  'Le commentaire est plus développé au rythme posé',
+  `${Math.round(longueurPosee)} caractères contre ${Math.round(longueurVive)}`,
+);
 
 await nav.close();
 console.log('');
-console.log(echecs === 0 ? 'Rythme : conforme.' : `${echecs} contrôle(s) en échec.`);
+console.log(echecs === 0 ? 'Rythme et variété : conformes.' : `${echecs} contrôle(s) en échec.`);
 process.exit(echecs === 0 ? 0 : 1);

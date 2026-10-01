@@ -38,23 +38,6 @@ export interface Reglages {
   coordonnees: boolean;
   /** Jouer un son sur les coups. */
   sons: boolean;
-  /**
-   * Le professeur parle-t-il à voix haute ?
-   *
-   * Actif par défaut, mais le navigateur ne laissera la synthèse s'exprimer
-   * qu'après la première interaction de l'utilisateur avec la page : c'est
-   * une contrainte des navigateurs, pas un délai ajouté ici.
-   */
-  voix: boolean;
-  /**
-   * Voix attribuée à chaque professeur, par identifiant de voix neuronale.
-   *
-   * Vide tant que l'utilisateur n'a pas choisi : le professeur reste alors
-   * silencieux. On ne retombe jamais sur la synthèse du navigateur, qui
-   * n'offre en pratique qu'une voix par genre et fait sonner les quatre
-   * personnages comme deux.
-   */
-  voixProfesseurs: Record<string, string>;
   /** Animation des pièces (désactivable sur appareil lent). */
   animations: boolean;
   /** Professeur choisi pour le jeu assisté. */
@@ -81,15 +64,6 @@ export const REGLAGES_PAR_DEFAUT: Reglages = {
   cleApi: '',
   coordonnees: true,
   sons: false,
-  voix: true,
-  // Attribution choisie à l'écoute des vingt-trois voix. Elle reste
-  // modifiable depuis la page « Les voix des professeurs ».
-  voixProfesseurs: {
-    'homme-ultime': 'fr-FR-HenriNeural',
-    ephraim: 'fr-FR-RemyMultilingualNeural',
-    johana: 'fr-FR-EloiseNeural',
-    serena: 'fr-FR-VivienneMultilingualNeural',
-  },
   animations: true,
   professeur: PROFESSEUR_PAR_DEFAUT,
   niveauEleve: 'intermediaire',

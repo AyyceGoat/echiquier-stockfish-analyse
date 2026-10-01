@@ -94,7 +94,7 @@ async function jouer(depuis, vers) {
   // Glisser plutôt que deux clics : Chessground traite le glisser-déposer
   // nativement, alors que la sélection en deux temps se perd dès qu'un rendu
   // intervient entre les deux appuis — ce qui arrive maintenant que le
-  // commentaire attend son audio avant de s'afficher.
+  // commentaire est remplacé lorsque le verdict du moteur arrive.
   await page.mouse.move(a.x, a.y);
   await page.mouse.down();
   await page.mouse.move(b.x, b.y, { steps: 6 });
