@@ -386,10 +386,15 @@ servi, mais un registre épuisé repartait de la liste complète — et le tirag
 déterministe, retombait sur la même phrase plusieurs coups d'affilée.
 Entendre « Bien, continuons » trois fois de suite est pire qu'une reprise
 tardive : la dernière tournure employée est désormais exclue en toute
-circonstance — et dans tous les registres à la fois. « Bien. » figure dans les
-acquiescements comme dans les réactions neutres : un garde par registre
-laissait passer deux « Bien. » de suite, un de chaque liste. Le joueur n'entend
-pas des registres, il entend une voix.
+circonstance, dans tous les registres à la fois, et jusqu'à la première phrase :
+« D'accord. » ouvre un acquiescement et aussi « D'accord. Voyons la suite. » —
+deux entrées distinctes, donc deux tirages légitimes, et pourtant le joueur
+entend deux fois le même mot dans la même partie. Les tournures dont l'ouverture
+a déjà servi sont donc écartées en priorité.
+
+« Bien. » figure dans les acquiescements comme dans les réactions neutres : un
+garde par registre laissait passer deux « Bien. » de suite, un de chaque liste.
+Le joueur n'entend pas des registres, il entend une voix.
 
 Le tirage passe par trois paliers : d'abord ce qui n'a jamais été dit, puis ce
 qui n'a pas été dit dans cette partie, et seulement ensuite la liste entière.

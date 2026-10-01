@@ -350,6 +350,18 @@ export function reinitialiserRythme(): void {
   dernierBref.clear();
 }
 
+/**
+ * Enregistre une réplique dite ailleurs que par `commenter`.
+ *
+ * Les accusés de réception d'un choix — garder le coup, le reprendre — ne
+ * passent pas par le commentaire, et sont brefs par nature. Sans les déclarer
+ * ici, « Bien. » dit par le commentaire et « D'accord. » dit par le bouton se
+ * suivaient sans que la règle des brèves ne voie rien.
+ */
+export function retenirReplique(idProfesseur: string, texte: string): void {
+  dernierBref.set(idProfesseur, texte.length > 0 && texte.length <= BREVE_MAX);
+}
+
 function piocherNeuf(liste: string[], graine: string, memoire?: MemoirePhrases): string {
   if (liste.length === 0) return '';
   const cle = liste[0];
@@ -373,7 +385,21 @@ function piocherNeuf(liste: string[], graine: string, memoire?: MemoirePhrases):
   const dansLaPartie = new Set([...(memoire?.nouvelles ?? []), ...(memoire?.partie ?? [])]);
   /** Interdite dans tous les cas : celle du registre, et celle qui vient d'être dite. */
   const rebattue = (t: string) => t === derniere || t === derniereDite;
-  let candidates = liste.filter((t) => !deja.has(t) && !rebattue(t));
+
+  /**
+   * L'oreille retient le DÉBUT d'une réplique, pas la réplique entière.
+   *
+   * « D'accord. » ouvre un acquiescement et aussi « D'accord. Voyons la
+   * suite. » : deux entrées distinctes, donc deux tirages légitimes, et pourtant
+   * le joueur entend deux fois le même mot dans la même partie. On écarte donc
+   * en priorité les tournures dont la première phrase a déjà servi.
+   */
+  const ouverture = (t: string) => t.split(/(?<=[.!?…])\s/)[0] ?? t;
+  const ouverturesDites = new Set([...dansLaPartie].map(ouverture));
+  let candidates = liste.filter(
+    (t) => !deja.has(t) && !rebattue(t) && !ouverturesDites.has(ouverture(t)),
+  );
+  if (candidates.length === 0) candidates = liste.filter((t) => !deja.has(t) && !rebattue(t));
   if (candidates.length === 0) {
     candidates = liste.filter((t) => !dansLaPartie.has(t) && !rebattue(t));
   }
@@ -449,21 +475,21 @@ export const commentaireLocal: MoteurCommentaire = {
     const grave = ctx.classement === 'gaffe' || ctx.classement === 'erreur';
     const presse = rythme === 'rapide' || rythme === 'tresRapide';
 
-    /** Retient la longueur de ce qui sort, et le rend. */
-    const dire = (texte: string) => {
-      dernierBref.set(prof.id, texte.length > 0 && texte.length <= BREVE_MAX);
-      return texte;
-    };
-
-    // Jamais deux brèves de suite : un mot, puis rien, puis un mot. Le silence
-    // n'est pas une brève — après lui, le professeur a de nouveau droit à son
-    // mot. Une faute, elle, est expliquée à n'importe quel rythme.
-    if (presse && !grave && dernierBref.get(prof.id)) {
-      dernierBref.set(prof.id, false);
-      return '';
-    }
+    /**
+     * Jamais deux brèves de suite : un mot, puis rien, puis un mot.
+     *
+     * La longueur de ce qui a été dit n'est PAS enregistrée ici. `commenter`
+     * peut être appelée deux fois pour le même coup — React réexécute ses
+     * effets — et une réplique préparée n'est pas une réplique dite : l'élève
+     * peut reprendre son coup. C'est l'écran qui déclare ce qu'il a affiché,
+     * par `retenirReplique`. Ici on ne fait que lire.
+     *
+     * Le silence n'est pas une brève : après lui, le professeur a de nouveau
+     * droit à son mot. Une faute, elle, est expliquée à n'importe quel rythme.
+     */
+    if (presse && !grave && dernierBref.get(prof.id)) return '';
     if (rythme === 'tresRapide' && !grave) {
-      return dire(piocherNeuf(ACQUIESCE[prof.id] ?? [], graine, memoire));
+      return piocherNeuf(ACQUIESCE[prof.id] ?? [], graine, memoire);
     }
 
     // 1. Réaction, en deux ou trois mots.
@@ -490,7 +516,7 @@ export const commentaireLocal: MoteurCommentaire = {
     // 2. Ce que le coup fait, traduit en français. Sautée quand l'élève
     //    enchaîne sans qu'il y ait de faute à signaler.
     if (rythme === 'rapide' && !grave) {
-      return dire(sansCoordonnees(morceaux.filter(Boolean).join(' ')));
+      return sansCoordonnees(morceaux.filter(Boolean).join(' '));
     }
 
     // 2. Ce que le coup fait, traduit en français.
@@ -515,7 +541,7 @@ export const commentaireLocal: MoteurCommentaire = {
     }
 
     // Filet de sécurité : aucune coordonnée ne doit survivre jusqu'à la voix.
-    return dire(sansCoordonnees(morceaux.filter(Boolean).join(' ')));
+    return sansCoordonnees(morceaux.filter(Boolean).join(' '));
   },
 };
 

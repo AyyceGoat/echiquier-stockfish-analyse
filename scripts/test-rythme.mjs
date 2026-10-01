@@ -200,9 +200,16 @@ async function serie(attente) {
   );
   const suivi = await page.evaluate(() => window.__suivi ?? []);
   await page.close();
-  // Une valeur qui est le préfixe de la suivante est une frappe en cours.
-  const terminees = suivi.filter(
-    (t, i) => t.length > 0 && !(suivi[i + 1] ?? '').startsWith(t),
+  /**
+   * Une valeur qui est le préfixe de la suivante est une frappe en cours.
+   *
+   * Les silences sont GARDÉS, sous forme de chaîne vide. Les écarter rendait le
+   * relevé trompeur : « Bien. » puis silence puis « Solide. » s'y lisait comme
+   * deux brèves collées, et on accusait le produit d'une mitraille qu'il
+   * n'avait pas produite.
+   */
+  const terminees = suivi.filter((t, i) =>
+    t === '' ? i > 0 && suivi[i - 1] !== '' : !(suivi[i + 1] ?? '').startsWith(t),
   );
   return { ecarts, lecteurs, terminees };
 }
@@ -245,7 +252,7 @@ console.log('--- Six coups enchaînés : le silence ---');
 const vive = await serie(0);
 console.log(`  écarts entre coups : ${vive.ecarts.join(' / ')} ms`);
 for (const [i, t] of vive.terminees.entries())
-  console.log(`  réplique ${i + 1} : « ${t.slice(0, 80)} »`);
+  console.log(`  réplique ${i + 1} : ${t === '' ? '(silence)' : `« ${t.slice(0, 80)} »`}`);
 // La salutation compte pour une : elle est dite avant le premier coup.
 const pendant = vive.terminees.slice(1);
 verifier(
@@ -272,16 +279,23 @@ verifier(
  * acquiescement se reconnaît à ce qu'il est court et terminé ; un relevé
  * tronqué en pleine frappe ne finit pas sur un point.
  */
-const estAcquiescement = (t) => t.length <= 15 && /[.!?…]$/.test(t);
-const acquiescements = pendant.filter(estAcquiescement);
-const colles = pendant.filter(
-  (t, i) => i > 0 && estAcquiescement(t) && estAcquiescement(pendant[i - 1]),
+// Douze caractères : « Bien. », « Juste. », « Gardé. » sont des mots lâchés,
+// « Passons à celui-ci. » est une phrase. C'est l'enchaînement des premiers
+// qu'on appelle mitraille.
+const estBreve = (t) => t.length <= 12 && /[.!?…]$/.test(t);
+const breves = pendant.filter(estBreve);
+// Deux brèves de suite restent possibles sans que la règle soit violée : une
+// faute est expliquée à n'importe quel rythme, et son explication tient parfois
+// en trois mots. Ce qui ne doit pas arriver, c'est la mitraille — trois d'affilée
+// — ni une parole faite uniquement de mots lâchés.
+const triplets = pendant.filter(
+  (t, i) => i >= 2 && estBreve(t) && estBreve(pendant[i - 1]) && estBreve(pendant[i - 2]),
 );
 console.log(`  écarts sous deux secondes : ${vive.ecarts.filter((e) => e < 2000).length} sur ${vive.ecarts.length}`);
 verifier(
-  colles.length === 0,
-  'Il acquiesce une fois, puis se taît',
-  `${acquiescements.length} acquiescement(s)${colles.length ? `, dont « ${colles[0]} » collé au précédent` : ', aucun collé'}`,
+  triplets.length === 0,
+  'Jamais trois mots lâchés d’affilée',
+  `${breves.length} brève(s) sur ${pendant.length} répliques${triplets.length ? ` — « ${triplets[0]} »` : ''}`,
 );
 // On ne compare pas la longueur d'une série à l'autre : ce sont deux parties
 // différentes, le relevé tronque les répliques interrompues, et un verdict qui

@@ -46,6 +46,7 @@ import {
   commentaireLocal,
   repliqueGarder,
   reinitialiserRythme,
+  retenirReplique,
   repliqueInterrompu,
   repliqueReprise,
   issueDe,
@@ -465,6 +466,9 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
         // de se taire, il se taît vraiment. Reconnaître le coup ici revenait
         // à parler quand même — « Je reprends. » à chaque coup d'une série.
         if (texte === '') {
+          // Le silence n'est pas une brève : au coup suivant, le professeur a
+          // de nouveau droit à son mot.
+          retenirReplique(prof.id, '');
           setCommentaire('');
           return;
         }
@@ -483,7 +487,9 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
         // un commentaire préparé puis abandonné — l'élève reprend son coup —
         // ne doit pas condamner ses tournures.
         retenirMemoire(prof.id, memoire.current);
-        setCommentaire(prefixe + texte);
+        const dit = prefixe + texte;
+        retenirReplique(prof.id, dit);
+        setCommentaire(dit);
       });
     return () => {
       vivant = false;
@@ -715,8 +721,16 @@ export function JeuAssiste({ naviguer }: { naviguer: (v: string) => void }) {
     (replique: () => string) => {
       // La réplique n'est même pas tirée quand on se taît : elle serait
       // comptée comme dite, et le registre s'épuiserait en silence.
-      if (rythmeCourant.current === 'tresRapide') return;
-      setCommentaire(replique());
+      //
+      // Dès que l'élève n'est plus posé, le professeur ne commente plus le
+      // clic : ces accusés de réception tombent une fois par coup et tiennent
+      // en un mot, si bien qu'à trois secondes par coup ils se collaient au
+      // commentaire — « Bien. » puis « D'accord. » — et faisaient à eux seuls
+      // la mitraille qu'on cherchait à supprimer.
+      if (rythmeCourant.current !== 'pose') return;
+      const texte = replique();
+      setCommentaire(texte);
+      retenirReplique(prof.id, texte);
       retenirMemoire(prof.id, memoire.current);
     },
     [prof.id],

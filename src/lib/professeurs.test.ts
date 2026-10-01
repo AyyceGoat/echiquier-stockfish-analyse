@@ -9,6 +9,7 @@ import {
   PROFESSEUR_PAR_DEFAUT,
   PROFESSEURS,
   reinitialiserRythme,
+  retenirReplique,
   professeurParId,
   type ContexteCommentaire,
   type NiveauEleve,
@@ -381,6 +382,19 @@ describe('le rythme commande la longueur', () => {
   const ctxRythme = (rythme: 'pose' | 'rapide' | 'tresRapide', classement: Classement = 'bon') =>
     contexte({ rythme, classement, cpApres: 40, perteCp: 20, meilleurSan: null });
 
+  /**
+   * Commente, puis déclare ce qui a été dit — comme le fait l'écran.
+   *
+   * La règle des brèves porte sur ce qui est AFFICHÉ, pas sur ce qui est
+   * préparé : une réplique calculée puis abandonnée, parce que l'élève reprend
+   * son coup, ne doit pas imposer le silence au coup suivant.
+   */
+  const dire = async (p: (typeof PROFESSEURS)[number], ctx: ContexteCommentaire) => {
+    const texte = await commentaireLocal.commenter(p, ctx);
+    retenirReplique(p.id, texte);
+    return texte;
+  };
+
   it('abrège quand le joueur accélère', async () => {
     for (const p of PROFESSEURS) {
       const pose = await commentaireLocal.commenter(p, ctxRythme('pose'));
@@ -417,7 +431,7 @@ describe('le rythme commande la longueur', () => {
       reinitialiserRythme();
       const suite: string[] = [];
       for (let i = 0; i < 8; i++) {
-        suite.push(await commentaireLocal.commenter(p, ctxRythme('tresRapide', 'excellent')));
+        suite.push(await dire(p, ctxRythme('tresRapide', 'excellent')));
       }
       expect(suite[0], p.id).not.toBe('');
       const colles = suite.filter((t, i) => i > 0 && t !== '' && suite[i - 1] !== '');
@@ -437,8 +451,8 @@ describe('le rythme commande la longueur', () => {
       for (let i = 0; i < 12; i++) {
         const t =
           i % 2 === 0
-            ? await commentaireLocal.commenter(p, ctxRythme('tresRapide', 'excellent'))
-            : await commentaireLocal.commenter(p, ctxRythme('rapide', 'theorie'));
+            ? await dire(p, ctxRythme('tresRapide', 'excellent'))
+            : await dire(p, ctxRythme('rapide', 'theorie'));
         if (t !== '') suite.push(t);
       }
       const colles = suite.filter((t, i) => i > 0 && t === suite[i - 1]);
@@ -449,17 +463,12 @@ describe('le rythme commande la longueur', () => {
   it('une faute rend la parole au professeur, même en pleine série', async () => {
     for (const p of PROFESSEURS) {
       reinitialiserRythme();
-      await commentaireLocal.commenter(p, ctxRythme('tresRapide', 'excellent'));
-      expect(await commentaireLocal.commenter(p, ctxRythme('tresRapide', 'excellent'))).toBe('');
-      const faute = await commentaireLocal.commenter(
-        p,
-        contexte({ rythme: 'tresRapide', classement: 'gaffe', perteCp: 400 }),
-      );
+      await dire(p, ctxRythme('tresRapide', 'excellent'));
+      expect(await dire(p, ctxRythme('tresRapide', 'excellent'))).toBe('');
+      const faute = await dire(p, contexte({ rythme: 'tresRapide', classement: 'gaffe', perteCp: 400 }));
       expect(faute.length, `${p.id} faute`).toBeGreaterThan(25);
       // Et le coup suivant, s'il est bon, reçoit de nouveau un mot.
-      expect(
-        await commentaireLocal.commenter(p, ctxRythme('tresRapide', 'excellent')),
-      ).not.toBe('');
+      expect(await dire(p, ctxRythme('tresRapide', 'excellent'))).not.toBe('');
     }
   });
 });
