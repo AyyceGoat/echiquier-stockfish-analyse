@@ -174,24 +174,29 @@ if (plateau) {
 // vérifie sur la réponse réelle, parce qu'un fichier oublié dans `public/` ou
 // une fonction restée déployée continueraient d'être servis alors que plus
 // aucune ligne de l'application ne les appelle.
+//
+// Le code HTTP ne suffit pas à conclure : la redirection SPA renvoie
+// `index.html` avec un 200 pour toute adresse inconnue. Un fichier supprimé
+// répond donc 200, mais en `text/html`. Ce qu'on vérifie est donc le TYPE : plus
+// aucune de ces adresses ne doit rendre de l'audio ni du JSON.
 const residus = await page.evaluate(async () => {
   const sortie = {};
   for (const chemin of ['/voix/manifeste.json', '/voix/apercu/fr-FR-HenriNeural.mp3']) {
     const r = await fetch(chemin).catch(() => null);
-    sortie[chemin] = r ? r.status : 0;
+    sortie[chemin] = r ? `${r.status} ${r.headers.get('content-type') ?? '?'}` : '0';
   }
   const api = await fetch('/api/voix', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ voix: 'fr-FR-HenriNeural', texte: 'Essai.' }),
   }).catch(() => null);
-  sortie['/api/voix'] = api ? api.status : 0;
+  sortie['/api/voix'] = api ? `${api.status} ${api.headers.get('content-type') ?? '?'}` : '0';
   return sortie;
 });
 verifier(
-  Object.values(residus).every((code) => code !== 200),
+  Object.values(residus).every((r) => !/audio|mpeg|application\/json/.test(r)),
   'Plus rien ne répond sur les adresses de la voix',
-  Object.entries(residus).map(([c, n]) => `${c} → ${n}`).join(' · '),
+  Object.entries(residus).map(([c, r]) => `${c} → ${r}`).join(' · '),
 );
 // La politique n'a plus à autoriser de média : aucun son, aucune vidéo.
 verifier(!/media-src/.test(csp), 'La politique ne déclare plus de source média');
@@ -199,7 +204,14 @@ verifier(!/media-src/.test(csp), 'La politique ne déclare plus de source média
 const lecteurs = await page.evaluate(() => document.querySelectorAll('audio, video').length);
 verifier(lecteurs === 0, 'Aucun lecteur audio dans la page', `${lecteurs} lecteur(s)`);
 
-verifier(erreurs.length === 0, 'Aucune erreur de console', erreurs.slice(0, 2).join(' | ') || 'aucune');
+// Les 404 provoqués par la sonde ci-dessus ne comptent pas : c'est le test qui
+// les a demandés, pas l'application.
+const vraiesErreurs = erreurs.filter((e) => !/404/.test(e));
+verifier(
+  vraiesErreurs.length === 0,
+  'Aucune erreur de console',
+  vraiesErreurs.slice(0, 2).join(' | ') || 'aucune',
+);
 
 await nav.close();
 console.log('\n' + (echecs === 0 ? 'Démarrage déployé : conforme.' : `${echecs} contrôle(s) en échec.`));
