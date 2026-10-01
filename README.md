@@ -8,7 +8,10 @@ Une application web d'échecs qui explique vos coups en français, plutôt que d
 vous donner un chiffre. Stockfish tourne dans votre navigateur : pas de compte,
 pas de publicité, et tout fonctionne hors ligne.
 
-[**→ Essayer l'application**](https://echiquier-stockfish-analyse.netlify.app)
+[**→ echiquier-stockfish-analyse.netlify.app**](https://echiquier-stockfish-analyse.netlify.app)
+
+*En production, installable sur téléphone, et jouable hors ligne après la
+première visite.*
 
 </div>
 
@@ -452,6 +455,77 @@ Ce que la voix imposait au texte a disparu avec elle, et c'est le vrai gain :
 Un contrôle du test déployé vérifie que rien ne répond plus : ni
 `/voix/manifeste.json`, ni un fichier d'aperçu, ni `/api/voix`, et qu'aucun
 élément `<audio>` n'est créé dans la page. Supprimer n'est pas désactiver.
+
+### Ce qui protège la facture
+
+La lecture d'une position par photo est la seule fonction qui dépense de
+l'argent : elle appelle un modèle à travers `netlify/functions/reconnaitre.mjs`.
+Tout le reste — moteur, analyse, commentaires, exercices — tourne dans le
+navigateur et ne coûte rien.
+
+Quatre garde-fous, dans l'ordre où ils s'appliquent :
+
+| garde-fou | valeur | ce qu'il arrête |
+|---|---|---|
+| contrôle d'origine | hôte de la requête | l'usage depuis un autre site |
+| plafond par adresse IP | 20 lectures par heure | une boucle depuis une connexion |
+| plafond du site | 200 lectures par heure | une attaque répartie sur mille adresses |
+| taille d'image | 1,5 Mo en base64 | une image de six mégaoctets facturée au prix fort |
+
+Le contrôle d'origine ne suffit pas, et c'est la raison des plafonds : un en-tête
+`Origin` se falsifie en une ligne de `curl`. Seul un compteur borne la dépense.
+Il vit dans Netlify Blobs, donc partagé par toutes les instances de la fonction,
+et retombe sur un compteur en mémoire quand le magasin est indisponible —
+exécution locale, script de diagnostic. Les écritures ne sont pas atomiques :
+pour un garde-fou de coût, une course qui laisse passer un appel de trop est sans
+conséquence.
+
+**L'ordre compte.** Ce qui ne coûte rien se vérifie d'abord — méthode, origine,
+plafonds, forme du corps, taille de l'image — et la clé en dernier, juste avant
+la dépense. Elle était consultée en premier : une image trop volumineuse
+recevait « aucune clé configurée » au lieu de « image trop volumineuse », et le
+garde-fou de taille était intestable.
+
+La sortie du modèle est plafonnée à 700 jetons et le schéma demande le placement
+sur une seule ligne : la facture d'une génération suit ce qu'on lui fait écrire.
+
+Une clé personnelle saisie dans les réglages **n'est pas soumise au plafond du
+site** : elle ne coûte rien au propriétaire. Elle reste sur l'appareil et n'est
+transmise qu'à la fonction, en en-tête, au coup par coup.
+
+Sept tests couvrent ces plafonds dans `netlify/functions/reconnaitre.test.mjs`.
+Ils ne dépensent rien : sans clé dans l'environnement, la fonction consomme le
+quota puis répond 401, ce qui est exactement l'ordre à vérifier.
+
+### Les secrets ne sont jamais dans le dépôt
+
+- aucune variable d'environnement n'est préfixée `VITE_`, donc aucune n'entre
+  dans le bundle envoyé au navigateur. Vérifié sur le bundle construit ;
+- `.env` est ignoré par Git ; seul `.env.example` est versionné, sans valeur ;
+- l'historique complet a été balayé à la recherche des formes connues de clés
+  — Anthropic, AWS, GitHub, Slack, Google, clés privées PEM — sur les 69
+  commits de tous les refs. Rien ;
+- la fonction ne journalise jamais de clé, et le message d'erreur du fournisseur
+  **ne sort plus** vers le navigateur. Il était renvoyé dans un champ `cause`
+  que le client ne lit nulle part : une fuite sans contrepartie — nom du modèle,
+  présence d'une passerelle, parfois un fragment de requête. Il reste au journal
+  du serveur, débarrassé de ce qui ressemble à une clé.
+
+### En-têtes servis
+
+Vérifiés sur la réponse HTTP réelle, pas dans le fichier de configuration :
+`Content-Security-Policy` sans `unsafe-inline` pour les scripts,
+`Cross-Origin-Opener-Policy: same-origin`, `Cross-Origin-Embedder-Policy:
+require-corp`, `Cross-Origin-Resource-Policy: same-origin`,
+`Referrer-Policy: strict-origin-when-cross-origin`,
+`Permissions-Policy: camera=(self), microphone=(), geolocation=()`,
+`X-Content-Type-Options: nosniff`, `Strict-Transport-Security` sur un an.
+
+`frame-ancestors 'none'` remplace `X-Frame-Options`. La fonction ne pose aucun
+en-tête CORS : une page tierce ne peut donc pas lire sa réponse.
+
+`npm audit` : **0 vulnérabilité**. Six dépendances de production, dont `ws` a été
+retirée — elle ne servait plus à rien depuis la suppression de la voix.
 
 ### Aucun script en ligne dans le document
 

@@ -129,6 +129,8 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    // Les fonctions serverless sont testées elles aussi : les plafonds de
+    // dépense sont la seule chose qui sépare ce point d'entrée d'une facture.
+    include: ['src/**/*.test.ts', 'netlify/**/*.test.mjs'],
   },
 });

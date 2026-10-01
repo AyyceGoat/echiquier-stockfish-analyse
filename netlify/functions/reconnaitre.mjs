@@ -171,6 +171,116 @@ function origineAutorisee(origine, req) {
   }
 }
 
+/* --------------------------------------------------------------------------
+   PLAFONDS DE DÉPENSE
+   --------------------------------------------------------------------------
+   Ce point d'entrée dépense de l'argent réel : chaque appel facture une
+   génération à Anthropic, et chaque invocation facture du temps de fonction à
+   Netlify. Le contrôle d'origine ferme l'usage depuis un navigateur tiers,
+   mais un en-tête `Origin` se falsifie en une ligne de `curl` : seul un
+   compteur borne la facture.
+
+   Deux plafonds, par fenêtre d'une heure :
+
+     - par adresse IP, pour que personne ne puisse boucler ;
+     - pour le site entier, quand c'est la clé du propriétaire qui paie. C'est
+       le plafond qui compte vraiment : il borne la dépense même si l'attaque
+       vient de mille adresses différentes.
+
+   Le compteur vit dans Netlify Blobs, donc partagé par toutes les instances de
+   la fonction. Quand le magasin est indisponible — exécution locale, script de
+   diagnostic — on retombe sur un compteur en mémoire : il ne survit pas à un
+   démarrage à froid, mais il ne laisse pas non plus la porte ouverte pendant un
+   test. Les écritures ne sont pas atomiques ; pour un garde-fou de coût, une
+   course qui laisse passer un appel de trop est sans conséquence.
+   -------------------------------------------------------------------------- */
+
+/** Durée de la fenêtre de comptage, en secondes. */
+const FENETRE_S = 3600;
+
+/**
+ * Appels autorisés par adresse IP et par heure.
+ *
+ * Lire une position prend une photo, pas vingt : une session réelle en demande
+ * trois à cinq. Vingt laisse de la marge à qui recadre et réessaie, et reste
+ * très loin d'une boucle.
+ */
+const LIMITE_IP = 20;
+
+/** Appels autorisés pour tout le site et par heure, sur la clé du propriétaire. */
+const LIMITE_SITE = 200;
+
+/** Compteur de repli, par instance de fonction. */
+const enMemoire = new Map();
+
+/** Fenêtre courante, pour que les clés expirent d'elles-mêmes. */
+const fenetre = () => Math.floor(Date.now() / 1000 / FENETRE_S);
+
+/**
+ * Adresse de l'appelant.
+ *
+ * Netlify pose `x-nf-client-connection-ip`, qui est l'adresse réelle du socket
+ * et ne se falsifie pas depuis le client. `x-forwarded-for` n'est qu'un repli
+ * pour les autres hébergeurs, et sa première valeur est la seule à peu près
+ * fiable. Sans adresse du tout, on compte tout le monde ensemble : c'est plus
+ * strict, et c'est volontaire.
+ */
+function adresseDe(req) {
+  const directe = req.headers.get('x-nf-client-connection-ip');
+  if (directe) return directe.trim();
+  const chaine = req.headers.get('x-forwarded-for');
+  if (chaine) return chaine.split(',')[0].trim();
+  return 'inconnue';
+}
+
+/** Incrémente un compteur et rend sa valeur après incrément. */
+async function incrementer(cle) {
+  try {
+    const { getStore } = await import('@netlify/blobs');
+    const magasin = getStore('quotas-reconnaissance');
+    const actuel = Number((await magasin.get(cle)) ?? 0);
+    const suivant = actuel + 1;
+    await magasin.set(cle, String(suivant));
+    return suivant;
+  } catch {
+    const suivant = (enMemoire.get(cle) ?? 0) + 1;
+    enMemoire.set(cle, suivant);
+    // La carte ne doit pas grossir indéfiniment sur une instance qui vit.
+    if (enMemoire.size > 5000) enMemoire.clear();
+    return suivant;
+  }
+}
+
+/**
+ * Vérifie les plafonds et les consomme.
+ *
+ * Rend `null` si l'appel est autorisé, ou une réponse 429 prête à être
+ * renvoyée. Le compteur est incrémenté AVANT l'appel payant, jamais après :
+ * un appel qui échoue a coûté quand même.
+ */
+async function controlerQuota(req, cleDuProprietaire) {
+  const f = fenetre();
+  const ip = adresseDe(req);
+  const compteIp = await incrementer(`ip:${ip}:${f}`);
+  if (compteIp > LIMITE_IP) {
+    return erreur(
+      "Trop de lectures d'image depuis cette connexion.",
+      `Patientez une heure, ou saisissez votre propre clé d'API dans les réglages. Limite : ${LIMITE_IP} lectures par heure.`,
+      429,
+    );
+  }
+  if (!cleDuProprietaire) return null;
+  const compteSite = await incrementer(`site:${f}`);
+  if (compteSite > LIMITE_SITE) {
+    return erreur(
+      'La lecture par modèle est momentanément saturée.',
+      "Réessayez dans une heure, ou saisissez votre propre clé d'API dans les réglages : elle n'est pas soumise à ce plafond.",
+      429,
+    );
+  }
+  return null;
+}
+
 export default async function handler(req) {
   if (req.method === 'GET') {
     const url = new URL(req.url);
@@ -212,14 +322,9 @@ export default async function handler(req) {
     );
   }
 
-  const cle = process.env.ANTHROPIC_API_KEY || cleUtilisateur;
-  if (!cle) {
-    return erreur(
-      "Aucune clé d'API n'est configurée.",
-      "Ouvrez Réglages puis « Reconnaissance par image » et saisissez votre clé d'API Anthropic. Elle reste stockée sur cet appareil.",
-      401,
-    );
-  }
+  // Plafonds de dépense, consommés avant la moindre requête payante.
+  const refus = await controlerQuota(req, Boolean(process.env.ANTHROPIC_API_KEY) && !cleUtilisateur);
+  if (refus) return refus;
 
   let corps;
   try {
@@ -232,8 +337,16 @@ export default async function handler(req) {
   if (typeof image !== 'string' || image.length < 100) {
     return erreur("Aucune image exploitable n'a été reçue.");
   }
-  // Garde-fou : le client redimensionne à 1024 px, ce qui donne ~150 Ko.
-  if (image.length > 8_000_000) {
+  /**
+   * Garde-fou de taille, resserré.
+   *
+   * Le client redimensionne à 1024 px en JPEG 0,85, ce qui donne 100 à 250 Ko,
+   * soit 140 à 340 Ko en base64. Le plafond était de huit mégaoctets : vingt-cinq
+   * fois trop, et la facturation d'une image suit sa taille. Un mégaoctet et demi
+   * laisse une marge confortable à une photo mal préparée et ferme la porte à qui
+   * voudrait faire payer une image de six mégaoctets.
+   */
+  if (image.length > 1_500_000) {
     return erreur(
       "L'image est trop volumineuse.",
       'Réessayez : elle doit être redimensionnée avant envoi.',
@@ -244,6 +357,25 @@ export default async function handler(req) {
   const mediaType = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'].includes(typeMime)
     ? typeMime
     : 'image/jpeg';
+
+  /**
+   * La clé n'est consultée qu'ici, juste avant la dépense.
+   *
+   * Elle l'était plus haut, avant même de regarder le corps de la requête : une
+   * image de six mégaoctets recevait alors « aucune clé configurée » au lieu de
+   * « image trop volumineuse », et le garde-fou de taille devenait intestable.
+   * L'ordre est maintenant celui du coût : ce qui ne coûte rien se vérifie
+   * d'abord — méthode, origine, plafonds, forme du corps, taille de l'image — et
+   * la clé en dernier.
+   */
+  const cle = process.env.ANTHROPIC_API_KEY || cleUtilisateur;
+  if (!cle) {
+    return erreur(
+      "Aucune clé d'API n'est configurée.",
+      "Ouvrez Réglages puis « Reconnaissance par image » et saisissez votre clé d'API Anthropic. Elle reste stockée sur cet appareil.",
+      401,
+    );
+  }
 
   const client = new Anthropic({ apiKey: cle });
 
@@ -323,15 +455,22 @@ export default async function handler(req) {
         429,
       );
     }
-    // Le message brut peut contenir des fragments de requête : on n'en
-    // conserve que le type et le statut, suffisants pour diagnostiquer.
-    const cause = `${e?.name ?? 'Error'}${statut ? ` ${statut}` : ''}: ${String(e?.message ?? e).slice(0, 200)}`;
+    /**
+     * Le message du fournisseur reste au journal, il ne sort pas d'ici.
+     *
+     * Il était renvoyé au navigateur dans un champ `cause` que personne ne lit :
+     * le client ne s'en sert nulle part. C'était donc une fuite sans contrepartie
+     * — nom du modèle, présence d'une passerelle, et selon l'erreur un fragment
+     * de la requête. On journalise, en effaçant d'abord ce qui ressemble à une
+     * clé, et le client reçoit de quoi agir, rien de plus.
+     */
+    const brut = `${e?.name ?? 'Error'}${statut ? ` ${statut}` : ''}: ${String(e?.message ?? e)}`;
+    const cause = brut.replace(/sk-[A-Za-z0-9_-]{8,}/g, 'sk-***').slice(0, 200);
     console.error('Échec de la reconnaissance :', cause);
     return reponseJson(
       {
         erreur: 'La reconnaissance a échoué.',
         conseil: 'Réessayez, ou basculez sur la reconnaissance locale dans les réglages.',
-        cause,
       },
       502,
     );
