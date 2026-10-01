@@ -327,12 +327,18 @@ const derniereDe = new Map<string, string>();
 let derniereDite = '';
 
 /**
- * Le professeur vient-il de se contenter d'acquiescer ?
+ * La dernière réplique du professeur tenait-elle en un mot ?
  *
- * Sert à ne pas le faire deux fois de suite quand l'élève enchaîne : la
- * deuxième fois, il se tait.
+ * Sert à ne jamais en enchaîner deux. « Bien. » puis « Juste. » au coup
+ * suivant, c'est la mitraille que le jeu rapide produisait — et elle ne venait
+ * pas d'un seul registre : un acquiescement à moins de deux secondes, puis une
+ * réaction seule entre deux et quatre, sonnent pareil. La règle porte donc sur
+ * ce qui a été DIT, pas sur la branche qui l'a produit.
  */
-const dernierAcquiesce = new Map<string, boolean>();
+const dernierBref = new Map<string, boolean>();
+
+/** Au-delà, une réplique n'est plus une brève mais une phrase. */
+const BREVE_MAX = 20;
 
 /**
  * Nouvelle partie : le professeur n'a encore rien dit.
@@ -341,7 +347,7 @@ const dernierAcquiesce = new Map<string, boolean>();
  * fois de suite vaut aussi par-dessus le changement de partie.
  */
 export function reinitialiserRythme(): void {
-  dernierAcquiesce.clear();
+  dernierBref.clear();
 }
 
 function piocherNeuf(liste: string[], graine: string, memoire?: MemoirePhrases): string {
@@ -441,16 +447,24 @@ export const commentaireLocal: MoteurCommentaire = {
      */
     const rythme = ctx.rythme ?? 'pose';
     const grave = ctx.classement === 'gaffe' || ctx.classement === 'erreur';
-    if (rythme === 'tresRapide' && !grave) {
-      // Un mot, puis le silence : enchaîner « Bien. Juste. Noté. Correct. »
-      // sur dix coups fait une mitraille, pas un professeur. On acquiesce
-      // une fois, on se tait ensuite tant que la série continue et qu'il n'y
-      // a rien à signaler. Une faute, ou un coup posé, rouvre la bouche.
-      if (dernierAcquiesce.get(prof.id)) return '';
-      dernierAcquiesce.set(prof.id, true);
-      return piocherNeuf(ACQUIESCE[prof.id] ?? [], graine, memoire);
+    const presse = rythme === 'rapide' || rythme === 'tresRapide';
+
+    /** Retient la longueur de ce qui sort, et le rend. */
+    const dire = (texte: string) => {
+      dernierBref.set(prof.id, texte.length > 0 && texte.length <= BREVE_MAX);
+      return texte;
+    };
+
+    // Jamais deux brèves de suite : un mot, puis rien, puis un mot. Le silence
+    // n'est pas une brève — après lui, le professeur a de nouveau droit à son
+    // mot. Une faute, elle, est expliquée à n'importe quel rythme.
+    if (presse && !grave && dernierBref.get(prof.id)) {
+      dernierBref.set(prof.id, false);
+      return '';
     }
-    dernierAcquiesce.set(prof.id, false);
+    if (rythme === 'tresRapide' && !grave) {
+      return dire(piocherNeuf(ACQUIESCE[prof.id] ?? [], graine, memoire));
+    }
 
     // 1. Réaction, en deux ou trois mots.
     const registre = REACTIONS[prof.id] ?? REACTIONS.ephraim;
@@ -476,7 +490,7 @@ export const commentaireLocal: MoteurCommentaire = {
     // 2. Ce que le coup fait, traduit en français. Sautée quand l'élève
     //    enchaîne sans qu'il y ait de faute à signaler.
     if (rythme === 'rapide' && !grave) {
-      return sansCoordonnees(morceaux.filter(Boolean).join(' '));
+      return dire(sansCoordonnees(morceaux.filter(Boolean).join(' ')));
     }
 
     // 2. Ce que le coup fait, traduit en français.
@@ -501,7 +515,7 @@ export const commentaireLocal: MoteurCommentaire = {
     }
 
     // Filet de sécurité : aucune coordonnée ne doit survivre jusqu'à la voix.
-    return sansCoordonnees(morceaux.filter(Boolean).join(' '));
+    return dire(sansCoordonnees(morceaux.filter(Boolean).join(' ')));
   },
 };
 

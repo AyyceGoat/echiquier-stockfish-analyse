@@ -258,10 +258,30 @@ verifier(
 // préfixe de la suivante. On ne compte donc pas les silences, on constate
 // qu'il y en a — moins de répliques que de coups — et que ce qui est dit est
 // nettement plus court qu'au rythme posé.
+/**
+ * Compter les silences par coup ne marche pas, et c'est instructif.
+ *
+ * D'une part le rythme réel dépend du moteur : sur un site déployé un verdict
+ * peut mettre trois secondes, et le coup suivant n'est alors plus « enchaîné »
+ * au sens de l'application. D'autre part les coups de ce scénario sont jugés
+ * imprécis ou fautifs par le moteur, et une faute est expliquée à n'importe
+ * quel rythme — c'est voulu.
+ *
+ * Ce qui se vérifie sans ambiguïté, c'est la règle elle-même : il acquiesce
+ * UNE fois, puis se taît. Donc jamais deux acquiescements de suite. Un
+ * acquiescement se reconnaît à ce qu'il est court et terminé ; un relevé
+ * tronqué en pleine frappe ne finit pas sur un point.
+ */
+const estAcquiescement = (t) => t.length <= 15 && /[.!?…]$/.test(t);
+const acquiescements = pendant.filter(estAcquiescement);
+const colles = pendant.filter(
+  (t, i) => i > 0 && estAcquiescement(t) && estAcquiescement(pendant[i - 1]),
+);
+console.log(`  écarts sous deux secondes : ${vive.ecarts.filter((e) => e < 2000).length} sur ${vive.ecarts.length}`);
 verifier(
-  pendant.length < COUPS.length,
-  'Des coups passent sans un mot',
-  `${pendant.length} répliques pour ${COUPS.length} coups`,
+  colles.length === 0,
+  'Il acquiesce une fois, puis se taît',
+  `${acquiescements.length} acquiescement(s)${colles.length ? `, dont « ${colles[0]} » collé au précédent` : ', aucun collé'}`,
 );
 // On ne compare pas la longueur d'une série à l'autre : ce sont deux parties
 // différentes, le relevé tronque les répliques interrompues, et un verdict qui

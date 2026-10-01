@@ -410,16 +410,20 @@ describe('le rythme commande la longueur', () => {
     }
   });
 
-  it('acquiesce une fois, puis se taît tant que la série dure', async () => {
-    // « Bien. Juste. Noté. Correct. » sur dix coups fait une mitraille.
+  it('n’enchaîne jamais deux brèves : un mot, puis rien, puis un mot', async () => {
+    // « Bien. Juste. Noté. Correct. » sur dix coups fait une mitraille. Le
+    // silence n'est pas une brève : après lui, le mot est de nouveau permis.
     for (const p of PROFESSEURS) {
       reinitialiserRythme();
-      const suite = [];
-      for (let i = 0; i < 5; i++) {
+      const suite: string[] = [];
+      for (let i = 0; i < 8; i++) {
         suite.push(await commentaireLocal.commenter(p, ctxRythme('tresRapide', 'excellent')));
       }
       expect(suite[0], p.id).not.toBe('');
-      expect(suite.slice(1).join(''), `${p.id} : ${JSON.stringify(suite)}`).toBe('');
+      const colles = suite.filter((t, i) => i > 0 && t !== '' && suite[i - 1] !== '');
+      expect(colles, `${p.id} : ${JSON.stringify(suite)}`).toEqual([]);
+      // Et il ne se tait pas définitivement : la moitié des coups reçoit un mot.
+      expect(suite.filter(Boolean).length, p.id).toBeGreaterThanOrEqual(3);
     }
   });
 

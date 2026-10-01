@@ -363,17 +363,23 @@ partie, qui se lit et se relit.
 |---|---|
 | plus de 4 s | réaction, phrase de fond, et l'état de la position s'il est tranché |
 | 2 à 4 s | la réaction seule — sauf faute, toujours expliquée |
-| moins de 2 s | un mot — puis plus rien tant que la série dure |
+| moins de 2 s | un mot — et jamais deux brèves de suite |
 
 Une réplique complète arrive toujours en retard quand on enchaîne : le temps
 de la dire, le coup suivant est joué. Mieux vaut un silence qu'une parole qui
 court après la position.
 
-Le dernier palier ne se contente pas de raccourcir : il acquiesce **une fois**,
-puis se taît tant que la série continue. « Bien. Juste. Noté. Correct. » sur
-dix coups fait une mitraille, pas un professeur. Une faute rouvre la bouche
-immédiatement — elle est toujours expliquée, à n'importe quel rythme — et un
-coup posé rend au professeur sa parole entière.
+Les deux paliers rapides ne se contentent pas de raccourcir : **jamais deux
+brèves de suite.** Un mot, puis rien, puis un mot. « Bien. Juste. Noté.
+Correct. » sur dix coups fait une mitraille, pas un professeur — et la mitraille
+ne venait pas d'un seul registre : un acquiescement sous deux secondes, puis une
+réaction seule entre deux et quatre, sonnent pareil. La règle porte donc sur la
+longueur de ce qui a été DIT, pas sur la branche qui l'a produit. Le silence,
+lui, n'est pas une brève : après lui le mot est de nouveau permis, ce qui évite
+l'autre excès — un professeur devenu muet pour le reste de la partie.
+
+Une faute rouvre la bouche immédiatement — elle est toujours expliquée, à
+n'importe quel rythme — et un coup posé rend au professeur sa parole entière.
 
 **Jamais la même phrase deux fois de suite.** La mémoire écarte ce qui a déjà
 servi, mais un registre épuisé repartait de la liste complète — et le tirage,
